@@ -322,7 +322,6 @@ async def update_select(update, context):
     await q.answer()
 
     plate, doc = q.data.split("|")
-
     context.user_data["plate"] = plate
     context.user_data["doc"] = doc
 
@@ -333,10 +332,17 @@ async def update_select(update, context):
 async def update_save(update, context):
     new_date = update.message.text.strip()
 
+    # Перевірка формату
     try:
-        datetime.strptime(new_date, "%d.%m.%Y")
+        d = datetime.strptime(new_date, "%d.%m.%Y").date()
     except:
-        await update.message.reply_text("Неправильний формат.")
+        await update.message.reply_text("❗ Неправильний формат. Введіть ДД.ММ.РРРР")
+        return UPDATE_ENTER_DATE
+
+    # Перевірка: дата не може бути в минулому
+    today = date.today()
+    if d < today:
+        await update.message.reply_text("❗ Дата не може бути в минулому. Введіть актуальну дату.")
         return UPDATE_ENTER_DATE
 
     rows = sheet.get_all_records()
