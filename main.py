@@ -1,25 +1,28 @@
+import asyncio
 import logging
+import re
+from datetime import datetime, date
+
 from telegram import (
     ReplyKeyboardMarkup,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    ReplyKeyboardRemove
+    ReplyKeyboardRemove,
+    Update,
 )
 from telegram.ext import (
-    Updater,
+    Application,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
     ConversationHandler,
-    Filters
+    ContextTypes,
+    filters,
 )
+
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
-import schedule
-import threading
-import time
-import re
+
 
 # ========== CONFIG ========== #
 
@@ -29,41 +32,26 @@ ADMIN_ID = 433247695
 SPREAD_NAME = "Документи водіїв"
 SHEET_NAME = "Drivers"
 
+logging.basicConfig(level=logging.INFO)
+
+
 # ========== GOOGLE SHEETS ========== #
 
 scope = [
     "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
+    "https://www.googleapis.com/auth/drive",
 ]
 
 creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 client = gspread.authorize(creds)
 sheet = client.open(SPREAD_NAME).worksheet(SHEET_NAME)
 
-# ========== KEYBOARDS ========== #
+REQUIRED_COLUMNS = ["FULL_NAME", "TELEGRAM", "TYPE", "PLATE", "DOC_NAME", "DATE"]
+existing = sheet.row_values(1)
+if existing != REQUIRED_COLUMNS:
+    sheet.delete_rows(1)
+    sheet.insert_row(REQUIRED_COLUMNS, 1)
 
-main_keyboard = ReplyKeyboardMarkup(
-    [
-        ["🚘 МОЇ ТРАНСПОРТИ"],
-        ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
-        ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"]
-    ],
-    resize_keyboard=True
-)
-
-register_keyboard = ReplyKeyboardMarkup(
-    [["🔰 ЗАРЕЄСТРУВАТИСЯ"]],
-    resize_keyboard=True
-)
-
-DOC_LABELS = {
-    "TP": "ТЕХ ПАСПОРТ",
-    "BC": "БІЛИЙ СЕРТИФІКАТ",
-    "TO": "ТЕХ ОГЛЯД",
-    "TACO": "КАЛІБРОВКА ТАХО",
-    "INS": "СТРАХОВИЙ ПОЛІС",
-    "GREEN": "ЗЕЛЕНА КАРТА",
-}
 
 # ========== STATES ========== #
 
@@ -76,226 +64,272 @@ DOC_LABELS = {
     ADD_ENTER_DATE,
     UPDATE_SELECT_DOC,
     UPDATE_ENTER_DATE,
-    DELETE_SELECT_DOC
+    DELETE_SELECT_DOC,
 ) = range(9)
+
 
 # ========== HELPERS ========== #
 
 def norm(text):
     return " ".join(text.upper().split())
 
-def user_exists(user_id):
-    rows = sheet.get_all_records()
-    return any(str(r["TELEGRAM"]) == str(user_id) for r in rows)
-
-def get_user_docs(user_id):
-    return [
-        r for r in sheet.get_all_records()
-        if str(r["TELEGRAM"]) == str(user_id) and r["DOC_NAME"]
-    ]
-
-def get_user_plates(user_id):
-    plates = set()
-    for r in sheet.get_all_records():
-        if str(r["TELEGRAM"]) == str(user_id):
-            if r["PLATE"]:
-                plates.add(r["PLATE"])
-    return sorted(list(plates))
 
 def valid_plate(text):
     return re.fullmatch(r"[A-ZА-Я]{2}[0-9]{4}[A-ZА-Я]{2}", text.upper()) is not None
 
 
+def user_exists(uid):
+    return any(str(r["TELEGRAM"]) == str(uid) for r in sheet.get_all_records())
+
+
+def get_user_docs(uid):
+    return [
+        r
+        for r in sheet.get_all_records()
+        if str(r["TELEGRAM"]) == str(uid) and r["DOC_NAME"]
+    ]
+
+
+def get_user_plates(uid):
+    return sorted(
+        {
+            r["PLATE"]
+            for r in sheet.get_all_records()
+            if str(r["TELEGRAM"]) == str(uid) and r["PLATE"]
+        }
+    )
+
+
+DOC_LABELS = {
+    "TP": "ТЕХ ПАСПОРТ",
+    "BC": "БІЛИЙ СЕРТИФІКАТ",
+    "TO": "ТЕХ ОГЛЯД",
+    "TACO": "КАЛІБРОВКА ТАХО",
+    "INS": "СТРАХОВИЙ ПОЛІС",
+    "GREEN": "ЗЕЛЕНА КАРТА",
+}
+
+
 # ========== START ========== #
 
-def start(update, context):
-    user_id = update.message.chat_id
-    if not user_exists(user_id):
-        update.message.reply_text(
-            "Ви вперше користуєтеся ботом.\nБудь ласка, зареєструйтесь:",
-            reply_markup=register_keyboard
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.message.chat_id
+
+    if not user_exists(uid):
+        await update.message.reply_text(
+            "Ви вперше користуєтесь ботом.\nБудь ласка, зареєструйтесь:",
+            reply_markup=ReplyKeyboardMarkup(
+                [["🔰 ЗАРЕЄСТРУВАТИСЯ"]], resize_keyboard=True
+            ),
         )
         return
-    update.message.reply_text("Головне меню:", reply_markup=main_keyboard)
+
+    await update.message.reply_text(
+        "Головне меню:",
+        reply_markup=ReplyKeyboardMarkup(
+            [
+                ["🚘 МОЇ ТРАНСПОРТИ"],
+                ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
+                ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"],
+            ],
+            resize_keyboard=True,
+        ),
+    )
 
 
 # ========== REGISTRATION ========== #
 
-def register_start(update, context):
-    update.message.reply_text(
-        "Введіть ваше ІМ’Я ТА ПРІЗВИЩЕ:",
-        reply_markup=ReplyKeyboardRemove()   # ← повністю ховає кнопку
+async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Введіть ваше ІМ’Я ТА ПРІЗВИЩЕ:", reply_markup=ReplyKeyboardRemove()
     )
     return REG_ENTER_NAME
 
-def register_save(update, context):
+
+async def register_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     full = update.message.text.strip()
 
     if full.startswith("🔰") or len(full.split()) < 2:
-        update.message.reply_text("Будь ласка напишіть ім’я та прізвище ТЕКСТОМ 📝")
+        await update.message.reply_text("Введіть ім’я та прізвище ТЕКСТОМ 📝")
         return REG_ENTER_NAME
 
     uid = update.message.chat_id
     sheet.append_row([full, str(uid), "", "", "", ""])
 
-    # NEW FIX ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-    update.message.reply_text("Реєстрацію завершено ✔")
-    update.message.reply_text("Головне меню:", reply_markup=main_keyboard)
-    # NEW FIX ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
-
+    await update.message.reply_text("Реєстрацію завершено ✔")
+    await start(update, context)
     return ConversationHandler.END
 
 
 # ========== ADD DOCUMENT ========== #
 
-def add_doc_start(update, context):
-    keyboard = [
+async def add_doc_start(update, context):
+    kb = [
         [InlineKeyboardButton("🚗 АВТО", callback_data="TYPE_AUTO")],
-        [InlineKeyboardButton("🛞 ПРИЧІП", callback_data="TYPE_TRAILER")]
+        [InlineKeyboardButton("🛞 ПРИЧІП", callback_data="TYPE_TRAILER")],
     ]
-    update.message.reply_text("Оберіть тип транспорту:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text(
+        "Оберіть тип транспорту:", reply_markup=InlineKeyboardMarkup(kb)
+    )
     return ADD_SELECT_TYPE
 
-def add_doc_type(update, context):
+
+async def add_doc_type(update, context):
     q = update.callback_query
-    q.answer()
+    await q.answer()
 
     context.user_data["vehicle_type"] = q.data.replace("TYPE_", "")
-    q.edit_message_text("Введіть номер (формат AA1234BB):")
+    await q.edit_message_text("Введіть номер (AA1234BB):")
     return ADD_ENTER_PLATE
 
-def add_doc_plate(update, context):
+
+async def add_doc_plate(update, context):
     plate = update.message.text.upper().strip()
 
     if not valid_plate(plate):
-        update.message.reply_text("❗ Формат неправильний. Приклад: **AA1234BB**")
+        await update.message.reply_text("❗ Неправильний формат. AA1234BB")
         return ADD_ENTER_PLATE
 
     context.user_data["plate"] = plate
 
-    keyboard = [
-        [InlineKeyboardButton("ТЕХ ПАСПОРТ", callback_data="DOC_TP")],
-        [InlineKeyboardButton("БІЛИЙ СЕРТИФІКАТ", callback_data="DOC_BC")],
-        [InlineKeyboardButton("ТЕХ ОГЛЯД", callback_data="DOC_TO")],
-        [InlineKeyboardButton("КАЛІБРОВКА ТАХО", callback_data="DOC_TACO")],
-        [InlineKeyboardButton("СТРАХОВИЙ ПОЛІС", callback_data="DOC_INS")],
-        [InlineKeyboardButton("ЗЕЛЕНА КАРТА", callback_data="DOC_GREEN")],
-        [InlineKeyboardButton("ІНШЕ", callback_data="DOC_CUSTOM")],
+    kb = [
+        [InlineKeyboardButton(v, callback_data=f"DOC_{k}")]
+        for k, v in DOC_LABELS.items()
     ]
+    kb.append([InlineKeyboardButton("ІНШЕ", callback_data="DOC_CUSTOM")])
 
-    update.message.reply_text("Оберіть документ:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text(
+        "Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb)
+    )
     return ADD_SELECT_DOC
 
-def add_doc_name(update, context):
+
+async def add_doc_name(update, context):
     q = update.callback_query
-    q.answer()
+    await q.answer()
 
     if q.data == "DOC_CUSTOM":
-        q.edit_message_text("Введіть НАЗВУ документа:")
+        await q.edit_message_text("Введіть назву документа:")
         return ADD_ENTER_CUSTOM_DOC
 
-    code = q.data.replace("DOC_", "")  # TP, BC, TO...
-    context.user_data["doc_name"] = DOC_LABELS.get(code, code)
-    q.edit_message_text("Введіть дату (ДД.ММ.РРРР):")
+    code = q.data.replace("DOC_", "")
+    context.user_data["doc_name"] = DOC_LABELS[code]
+    await q.edit_message_text("Введіть дату (ДД.ММ.РРРР):")
     return ADD_ENTER_DATE
 
-def add_custom_doc(update, context):
-    name = norm(update.message.text)
-    context.user_data["doc_name"] = name
-    update.message.reply_text("Дата документа (ДД.ММ.РРРР):")
+
+async def add_custom_doc(update, context):
+    context.user_data["doc_name"] = norm(update.message.text)
+    await update.message.reply_text("Дата документа (ДД.ММ.РРРР):")
     return ADD_ENTER_DATE
 
-def add_doc_date(update, context):
-    date_text = update.message.text.strip()
+
+async def add_doc_date(update, context):
+    text = update.message.text.strip()
+
     try:
-        datetime.strptime(date_text, "%d.%m.%Y")
+        datetime.strptime(text, "%d.%m.%Y")
     except:
-        update.message.reply_text("Невірний формат дати. Приклад: 12.05.2025")
+        await update.message.reply_text("Неправильний формат. 12.05.2025")
         return ADD_ENTER_DATE
 
     uid = update.message.chat_id
-    full = [r["FULL_NAME"] for r in sheet.get_all_records() if str(r["TELEGRAM"]) == str(uid)][0]
+    full = [
+        r["FULL_NAME"] for r in sheet.get_all_records() if str(r["TELEGRAM"]) == str(uid)
+    ][0]
 
-    sheet.append_row([
-        full,
-        str(uid),
-        context.user_data["vehicle_type"],
-        context.user_data["plate"],
-        context.user_data["doc_name"],
-        date_text
-    ])
+    sheet.append_row(
+        [
+            full,
+            str(uid),
+            context.user_data["vehicle_type"],
+            context.user_data["plate"],
+            context.user_data["doc_name"],
+            text,
+        ]
+    )
 
-    update.message.reply_text("Документ додано ✔", reply_markup=main_keyboard)
+    await update.message.reply_text("Документ додано ✔")
     return ConversationHandler.END
 
 
 # ========== MY VEHICLES ========== #
 
-def my_vehicles(update, context):
-    uid = update.message.chat_id
-    plates = get_user_plates(uid)
-
+async def my_vehicles(update, context):
+    plates = get_user_plates(update.message.chat_id)
     if not plates:
-        update.message.reply_text("У вас ще немає зареєстрованих номерів.")
+        await update.message.reply_text("Немає транспортних засобів.")
         return
 
-    text = "Ваші транспортні засоби:\n\n"
-    for p in plates:
-        text += f"• {p}\n"
-    update.message.reply_text(text)
+    await update.message.reply_text(
+        "Ваш транспорт:\n" + "\n".join(f"• {p}" for p in plates)
+    )
 
 
 # ========== MY DOCS ========== #
 
-def my_docs(update, context):
+async def my_docs(update, context):
     docs = get_user_docs(update.message.chat_id)
-
     if not docs:
-        update.message.reply_text("Документів немає.")
+        await update.message.reply_text("Документів немає.")
         return
 
-    text = "Ваші документи:\n\n"
-    for r in docs:
-        text += f"{r['TYPE']} | {r['PLATE']} | {r['DOC_NAME']} — {r['DATE']}\n"
+    text = "Ваші документи:\n\n" + "\n".join(
+        f"{d['TYPE']} | {d['PLATE']} | {d['DOC_NAME']} — {d['DATE']}" for d in docs
+    )
 
-    update.message.reply_text(text)
+    await update.message.reply_text(text)
 
 
 # ========== UPDATE DOC ========== #
 
-def update_start(update, context):
+async def update_start(update, context):
     docs = get_user_docs(update.message.chat_id)
     if not docs:
-        update.message.reply_text("Документів немає.")
+        await update.message.reply_text("Документів немає.")
         return ConversationHandler.END
 
-    kb = [[InlineKeyboardButton(f"{d['PLATE']} — {d['DOC_NAME']}", callback_data=d['PLATE'] + "|" + d['DOC_NAME'])] for d in docs]
+    kb = [
+        [
+            InlineKeyboardButton(
+                f"{d['PLATE']} — {d['DOC_NAME']}",
+                callback_data=f"{d['PLATE']}|{d['DOC_NAME']}",
+            )
+        ]
+        for d in docs
+    ]
 
-    update.message.reply_text("Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        "Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb)
+    )
     return UPDATE_SELECT_DOC
 
-def update_select(update, context):
+
+async def update_select(update, context):
     q = update.callback_query
-    q.answer()
+    await q.answer()
 
     plate, doc = q.data.split("|")
+
     context.user_data["plate"] = plate
     context.user_data["doc"] = doc
 
-    q.edit_message_text("Введіть нову дату (ДД.ММ.РРРР):")
+    await q.edit_message_text("Введіть нову дату (ДД.ММ.РРРР):")
     return UPDATE_ENTER_DATE
 
-def update_save(update, context):
+
+async def update_save(update, context):
     new_date = update.message.text.strip()
+
     try:
         datetime.strptime(new_date, "%d.%m.%Y")
     except:
-        update.message.reply_text("Невірна дата. Спробуйте ще раз.")
+        await update.message.reply_text("Неправильний формат.")
         return UPDATE_ENTER_DATE
 
+    rows = sheet.get_all_records()
     uid = update.message.chat_id
 
-    rows = sheet.get_all_records()
     for i, r in enumerate(rows, start=2):
         if (
             str(r["TELEGRAM"]) == str(uid)
@@ -304,47 +338,53 @@ def update_save(update, context):
         ):
             sheet.update_cell(i, 6, new_date)
 
-    update.message.reply_text("Оновлено ✔", reply_markup=main_keyboard)
+    await update.message.reply_text("Оновлено ✔")
     return ConversationHandler.END
 
 
 # ========== DELETE DOC ========== #
 
-def delete_start(update, context):
+async def delete_start(update, context):
     docs = get_user_docs(update.message.chat_id)
     if not docs:
-        update.message.reply_text("Документів немає.")
+        await update.message.reply_text("Документів немає.")
         return ConversationHandler.END
 
     kb = [
-        [InlineKeyboardButton(
-            f"{d['PLATE']} — {d['DOC_NAME']}",
-            callback_data=d['PLATE'] + "|" + d['DOC_NAME']
-        )]
+        [
+            InlineKeyboardButton(
+                f"{d['PLATE']} — {d['DOC_NAME']}",
+                callback_data=f"{d['PLATE']}|{d['DOC_NAME']}",
+            )
+        ]
         for d in docs
     ]
 
-    update.message.reply_text("Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        "Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb)
+    )
     return DELETE_SELECT_DOC
 
-def delete_process(update, context):
+
+async def delete_process(update, context):
     q = update.callback_query
-    q.answer()
+    await q.answer()
+
     plate, doc = q.data.split("|")
-    uid = q.message.chat_id
+    uid = q.from_user.id
 
     rows = sheet.get_all_records()
 
     for i, r in enumerate(rows, start=2):
         if (
-            str(r["TELEGRAM"]) == str(uid)
-            and r["PLATE"] == plate
+            r["PLATE"] == plate
             and r["DOC_NAME"] == doc
+            and str(r["TELEGRAM"]) == str(uid)
         ):
             sheet.delete_rows(i)
             break
 
-    q.edit_message_text("Документ видалено ✔")
+    await q.edit_message_text("Документ видалено ✔")
     return ConversationHandler.END
 
 
@@ -352,122 +392,133 @@ def delete_process(update, context):
 
 REMINDER_DAYS = {30, 25, 20, 14, 7, 3, 2, 1, 0}
 
-def check_documents():
-    rows = sheet.get_all_records()
 
-    for r in rows:
-        if not r["DOC_NAME"]:
-            continue
+async def reminders(app: Application):
+    while True:
+        rows = sheet.get_all_records()
+        today = date.today()
 
-        try:
-            exp = datetime.strptime(r["DATE"], "%d.%m.%Y").date()
-        except:
-            continue
+        for r in rows:
+            if not r["DOC_NAME"]:
+                continue
 
-        days = (exp - datetime.now().date()).days
-        uid = str(r["TELEGRAM"])
-        name = r["FULL_NAME"]
-        plate = r["PLATE"]
-        doc = r["DOC_NAME"]
-
-        # стандартне повідомлення водію
-        if days == 30:
-            user_msg = f"⚠️ Через 30 днів закінчується {doc} ({plate})"
-        elif days == 25:
-            user_msg = f"⚠️ Через 25 днів закінчується {doc} ({plate})"
-        elif days == 20:
-            user_msg = f"⚠️ Через 20 днів закінчується {doc} ({plate})"
-        elif days == 14:
-            user_msg = f"⚠️ Через 14 днів закінчується {doc} ({plate})"
-        elif days == 7:
-            user_msg = f"⚠️ Через 7 днів закінчується {doc} ({plate})"
-        elif days == 3:
-            user_msg = f"⚠️ Через 3 дні закінчується {doc} ({plate})"
-        elif days == 2:
-            user_msg = f"⚠️ Через 2 дні закінчується {doc} ({plate})"
-        elif days == 1:
-            user_msg = f"⚠️ Через 1 день закінчується {doc} ({plate})"
-        elif days == 0:
-            user_msg = f"❗ СЬОГОДНІ закінчується {doc} ({plate})"
-        elif days < 0:
-            user_msg = f"⛔ ПРОСТРОЧЕНО: {doc} ({plate})"
-        else:
-            continue
-
-        # повідомлення адміну
-        admin_msg = f"📣 {name} → {user_msg}"
-
-        # 1️⃣ Водію надсилаємо тільки його повідомлення
-        if uid != str(ADMIN_ID):
             try:
-                updater.bot.send_message(uid, user_msg)
+                exp = datetime.strptime(r["DATE"], "%d.%m.%Y").date()
+            except:
+                continue
+
+            days = (exp - today).days
+            if days not in REMINDER_DAYS:
+                continue
+
+            uid = int(r["TELEGRAM"])
+
+            if days < 0:
+                msg_user = f"⛔ ПРОСТРОЧЕНО: {r['DOC_NAME']} ({r['PLATE']})"
+            elif days == 0:
+                msg_user = f"❗ СЬОГОДНІ закінчується {r['DOC_NAME']} ({r['PLATE']})"
+            else:
+                msg_user = f"⚠️ Через {days} днів закінчується {r['DOC_NAME']} ({r['PLATE']})"
+
+            msg_admin = f"📣 {r['FULL_NAME']} → {msg_user}"
+
+            if uid != ADMIN_ID:
+                try:
+                    await app.bot.send_message(uid, msg_user)
+                except:
+                    pass
+
+            try:
+                await app.bot.send_message(ADMIN_ID, msg_admin)
             except:
                 pass
 
-        # 2️⃣ Адміну надсилаємо ТІЛЬКИ адмінське повідомлення
-        try:
-            updater.bot.send_message(ADMIN_ID, admin_msg)
-        except:
-            pass
+        await asyncio.sleep(60)
 
-def scheduler_loop():
-    while True:
-        schedule.run_pending()
-        time.sleep(5)
 
-schedule.every(1).minutes.do(check_documents)
+# ========== POST_INIT (ВАЖЛИВО!) ========== #
+
+async def post_init(app: Application):
+    app.create_task(reminders(app))
 
 
 # ========== RUN ========== #
 
-updater = Updater(TOKEN, use_context=True)
-dp = updater.dispatcher
+# ---------- RUN CLEAN VERSION ---------- #
 
-# Registration
-dp.add_handler(ConversationHandler(
-    entry_points=[MessageHandler(Filters.regex("🔰 ЗАРЕЄСТРУВАТИСЯ"), register_start)],
-    states={REG_ENTER_NAME: [MessageHandler(Filters.text, register_save)]},
-    fallbacks=[]
-))
+from telegram.ext import ApplicationBuilder
 
-# Add document
-dp.add_handler(ConversationHandler(
-    entry_points=[MessageHandler(Filters.regex("➕ ДОДАТИ ДОКУМЕНТ"), add_doc_start)],
-    states={
-        ADD_SELECT_TYPE: [CallbackQueryHandler(add_doc_type)],
-        ADD_ENTER_PLATE: [MessageHandler(Filters.text, add_doc_plate)],
-        ADD_SELECT_DOC: [CallbackQueryHandler(add_doc_name)],
-        ADD_ENTER_CUSTOM_DOC: [MessageHandler(Filters.text, add_custom_doc)],
-        ADD_ENTER_DATE: [MessageHandler(Filters.text, add_doc_date)],
-    },
-    fallbacks=[]
-))
+async def post_init(app):
+    # Запускаємо асинхронний фоновий таск з нагадуваннями
+    app.create_task(reminders(app))
 
-# Update doc
-dp.add_handler(ConversationHandler(
-    entry_points=[MessageHandler(Filters.regex("✏️ ОНОВИТИ ДОКУМЕНТ"), update_start)],
-    states={
-        UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
-        UPDATE_ENTER_DATE: [MessageHandler(Filters.text, update_save)],
-    },
-    fallbacks=[]
-))
 
-# Delete doc
-dp.add_handler(ConversationHandler(
-    entry_points=[MessageHandler(Filters.regex("🗑 ВИДАЛИТИ ДОКУМЕНТ"), delete_start)],
-    states={
-        DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
-    },
-    fallbacks=[]
-))
+# ---------- RUN CLEAN ---------- #
 
-dp.add_handler(MessageHandler(Filters.regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
-dp.add_handler(MessageHandler(Filters.regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
-dp.add_handler(CommandHandler("start", start))
+# ---------- RUN ---------- #
 
-threading.Thread(target=scheduler_loop, daemon=True).start()
+async def post_init(app):
+    # запуститься ПІСЛЯ старту event loop — тут помилок більше нема
+    app.create_task(reminders(app))
 
-print("BOT RUNNING 🚀")
-updater.start_polling()
-updater.idle()
+
+def main():
+    app = (
+        Application.builder()
+        .token(TOKEN)
+        .post_init(post_init)
+        .build()
+    )
+
+    # ----- РЕЄСТРАЦІЯ -----
+    app.add_handler(ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("🔰 ЗАРЕЄСТРУВАТИСЯ"), register_start)],
+        states={
+            REG_ENTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_save)]
+        },
+        fallbacks=[]
+    ))
+
+    # ----- ДОДАВАННЯ ДОКУМЕНТА -----
+    app.add_handler(ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("➕ ДОДАТИ ДОКУМЕНТ"), add_doc_start)],
+        states={
+            ADD_SELECT_TYPE: [CallbackQueryHandler(add_doc_type)],
+            ADD_ENTER_PLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_plate)],
+            ADD_SELECT_DOC: [CallbackQueryHandler(add_doc_name)],
+            ADD_ENTER_CUSTOM_DOC: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_doc)],
+            ADD_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_date)],
+        },
+        fallbacks=[]
+    ))
+
+    # ----- ОНОВЛЕННЯ ДОКУМЕНТА -----
+    app.add_handler(ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("✏️ ОНОВИТИ ДОКУМЕНТ"), update_start)],
+        states={
+            UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
+            UPDATE_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_save)],
+        },
+        fallbacks=[]
+    ))
+
+    # ----- ВИДАЛЕННЯ ДОКУМЕНТА -----
+    app.add_handler(ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("🗑 ВИДАЛИТИ ДОКУМЕНТ"), delete_start)],
+        states={
+            DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
+        },
+        fallbacks=[]
+    ))
+
+    # ----- ІНШІ КОМАНДИ -----
+    app.add_handler(MessageHandler(filters.Regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
+    app.add_handler(MessageHandler(filters.Regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
+    app.add_handler(CommandHandler("start", start))
+
+    print("BOT RUNNING 🚀")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
