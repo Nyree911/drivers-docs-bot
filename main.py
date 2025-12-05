@@ -437,6 +437,15 @@ async def delete_process(update, context):
     await q.edit_message_text("Документ видалено ✔")
     return ConversationHandler.END
 
+#______БОТ ЩОЙНО БУВ ПЕРЕЗАВАНТАЖЕНИЙ______
+async def notify_admin_start(app):
+    try:
+        await app.bot.send_message(
+            chat_id=ADMIN_ID,
+            text="🔄 Бот щойно був перезавантажений після нового деплою."
+        )
+    except Exception as e:
+        print("Admin notify error:", e)
 
 # ========== REMINDERS ========== #
 
@@ -500,28 +509,12 @@ async def reminders(app: Application):
 
 # ========== POST_INIT (ВАЖЛИВО!) ========== #
 
-async def post_init(app: Application):
-    app.create_task(reminders(app))
-
-
-# ========== RUN ========== #
-
-# ---------- RUN CLEAN VERSION ---------- #
-
-from telegram.ext import ApplicationBuilder
-
 async def post_init(app):
-    # Запускаємо асинхронний фоновий таск з нагадуваннями
+    # Запускаємо фоновий нагадувач
     app.create_task(reminders(app))
 
-
-# ---------- RUN CLEAN ---------- #
-
-# ---------- RUN ---------- #
-
-async def post_init(app):
-    # запуститься ПІСЛЯ старту event loop — тут помилок більше нема
-    app.create_task(reminders(app))
+    # Повідомляємо адміністратора
+    await notify_admin_start(app)
 
 
 def main():
