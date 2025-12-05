@@ -532,18 +532,32 @@ def main():
         .build()
     )
 
-    # ----- РЕЄСТРАЦІЯ -----
-    app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("🔰 ЗАРЕЄСТРУВАТИСЯ"), register_start)],
+    # ===================== ГЛОБАЛЬНІ КНОПКИ ТА КОМАНДИ ===================== #
+    # ❗ ЦІ ХЕНДЛЕРИ МАЮТЬ БУТИ ВВЕРХУ, ЩОБ НЕ ПОТРАПЛЯТИ В CONVERSATIONHANDLER
+
+    app.add_handler(MessageHandler(filters.Regex("^🚘 МОЇ ТРАНСПОРТИ$"), my_vehicles))
+    app.add_handler(MessageHandler(filters.Regex("^📄 МОЇ ДОКУМЕНТИ$"), my_docs))
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("expired", expired_docs))
+
+
+    # ======================== РЕЄСТРАЦІЯ ======================== #
+
+    register_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^🔰 ЗАРЕЄСТРУВАТИСЯ$"), register_start)],
         states={
-            REG_ENTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_save)]
+            REG_ENTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_save)],
         },
         fallbacks=[]
-    ))
+    )
+    app.add_handler(register_conv)
 
-    # ----- ДОДАВАННЯ ДОКУМЕНТА -----
-    app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("➕ ДОДАТИ ДОКУМЕНТ"), add_doc_start)],
+
+    # ====================== ДОДАВАННЯ ДОКУМЕНТА ====================== #
+
+    add_doc_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^➕ ДОДАТИ ДОКУМЕНТ$"), add_doc_start)],
         states={
             ADD_SELECT_TYPE: [CallbackQueryHandler(add_doc_type)],
             ADD_ENTER_PLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_plate)],
@@ -552,33 +566,36 @@ def main():
             ADD_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_date)],
         },
         fallbacks=[]
-    ))
+    )
+    app.add_handler(add_doc_conv)
 
-    # ----- ОНОВЛЕННЯ ДОКУМЕНТА -----
-    app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("✏️ ОНОВИТИ ДОКУМЕНТ"), update_start)],
+
+    # ====================== ОНОВЛЕННЯ ДОКУМЕНТА ====================== #
+
+    update_doc_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^✏️ ОНОВИТИ ДОКУМЕНТ$"), update_start)],
         states={
             UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
             UPDATE_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_save)],
         },
         fallbacks=[]
-    ))
+    )
+    app.add_handler(update_doc_conv)
 
-    # ----- ВИДАЛЕННЯ ДОКУМЕНТА -----
-    app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("🗑 ВИДАЛИТИ ДОКУМЕНТ"), delete_start)],
+
+    # ====================== ВИДАЛЕННЯ ДОКУМЕНТА ====================== #
+
+    delete_doc_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^🗑 ВИДАЛИТИ ДОКУМЕНТ$"), delete_start)],
         states={
             DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
         },
         fallbacks=[]
-    ))
+    )
+    app.add_handler(delete_doc_conv)
 
-    # ----- ІНШІ КОМАНДИ -----
-    app.add_handler(MessageHandler(filters.Regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
-    
-    app.add_handler(MessageHandler(filters.Regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("expired", expired_docs))
+
+    # ================================================================= #
 
     print("BOT RUNNING 🚀")
     app.run_polling()
