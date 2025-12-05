@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, date
-
+import json
 from telegram import (
     ReplyKeyboardMarkup,
     InlineKeyboardMarkup,
@@ -42,7 +42,9 @@ scope = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+
+creds_json = json.loads(os.getenv("CREDENTIALS_JSON"))
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
 client = gspread.authorize(creds)
 sheet = client.open(SPREAD_NAME).worksheet(SHEET_NAME)
 
