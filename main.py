@@ -546,12 +546,14 @@ async def force_exit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- MAIN ---------- #
 
 def main():
+    print("Building Application...")
     app = (
         Application.builder()
         .token(TOKEN)
         .post_init(post_init)
         .build()
     )
+    print("Application built OK")
 
     # ========= РЕЄСТРАЦІЯ ========= #
     register_conv = ConversationHandler(
