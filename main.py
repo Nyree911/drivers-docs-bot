@@ -510,7 +510,7 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
 
 # ========== POST_INIT (ВАЖЛИВО!) ========== #
 
-async def post_init(app, bot):
+async def post_init(app):
     try:
         await app.bot.delete_webhook(drop_pending_updates=True)
         print("Webhook deleted OK")
@@ -546,6 +546,9 @@ async def force_exit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- MAIN ---------- #
 
 def main():
+    print("TOKEN =", TOKEN)
+    print("CREDENTIALS_JSON length =", len(os.getenv("CREDENTIALS_JSON") or "NONE"))
+    print("Starting Application build…")
     print("Building Application...")
     app = (
         Application.builder()
