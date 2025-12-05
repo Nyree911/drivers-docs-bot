@@ -543,6 +543,7 @@ def main():
             REG_ENTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_save)],
         },
         fallbacks=[]
+        per_message=False
     )
     app.add_handler(register_conv)
 
@@ -559,6 +560,7 @@ def main():
             ADD_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_date)],
         },
         fallbacks=[]
+        per_message=False
     )
     app.add_handler(add_doc_conv)
 
@@ -572,6 +574,7 @@ def main():
             UPDATE_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_save)],
         },
         fallbacks=[]
+        per_message=False
     )
     app.add_handler(update_doc_conv)
 
@@ -584,6 +587,7 @@ def main():
             DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
         },
         fallbacks=[]
+        per_message=False
     )
     app.add_handler(delete_doc_conv)
 
