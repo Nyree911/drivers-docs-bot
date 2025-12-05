@@ -231,27 +231,35 @@ async def add_custom_doc(update, context):
 async def add_doc_date(update, context):
     text = update.message.text.strip()
 
+    # Перевірка формату
     try:
-        datetime.strptime(text, "%d.%m.%Y")
+        d = datetime.strptime(text, "%d.%m.%Y").date()
     except:
-        await update.message.reply_text("Неправильний формат. ДД.ММ.РРРР")
+        await update.message.reply_text("❗ Неправильний формат. Введіть: ДД.ММ.РРРР")
+        return ADD_ENTER_DATE
+
+    # Перевірка що дата майбутня або сьогодні
+    today = date.today()
+    if d < today:
+        await update.message.reply_text("❗ Дата не може бути в минулому. Введіть актуальну дату.")
         return ADD_ENTER_DATE
 
     uid = update.message.chat_id
+
     full = [
-        r["FULL_NAME"] for r in sheet.get_all_records() if str(r["TELEGRAM"]) == str(uid)
+        r["FULL_NAME"]
+        for r in sheet.get_all_records()
+        if str(r["TELEGRAM"]) == str(uid)
     ][0]
 
-    sheet.append_row(
-        [
-            full,
-            str(uid),
-            context.user_data["vehicle_type"],
-            context.user_data["plate"],
-            context.user_data["doc_name"],
-            text,
-        ]
-    )
+    sheet.append_row([
+        full,
+        str(uid),
+        context.user_data["vehicle_type"],
+        context.user_data["plate"],
+        context.user_data["doc_name"],
+        text
+    ])
 
     await update.message.reply_text("Документ додано ✔")
     return ConversationHandler.END
