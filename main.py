@@ -432,44 +432,56 @@ REMINDER_DAYS = {30, 25, 20, 14, 7, 3, 2, 1, 0}
 
 async def reminders(app: Application):
     while True:
-        rows = sheet.get_all_records()
-        today = date.today()
+        now = datetime.now()
+        hour = now.hour
 
-        for r in rows:
-            if not r["DOC_NAME"]:
-                continue
+        # Надсилати повідомлення лише між 11:00 та 21:00
+        if 11 <= hour < 21:
 
-            try:
-                exp = datetime.strptime(r["DATE"], "%d.%m.%Y").date()
-            except:
-                continue
+            data = sheet.get_all_records()
+            today = date.today()
 
-            days = (exp - today).days
-            if days not in REMINDER_DAYS:
-                continue
+            for r in data:
 
-            uid = int(r["TELEGRAM"])
+                if not r["DOC_NAME"]:
+                    continue
 
-            if days < 0:
-                msg_user = f"⛔ ПРОСТРОЧЕНО: {r['DOC_NAME']} ({r['PLATE']})"
-            elif days == 0:
-                msg_user = f"❗ СЬОГОДНІ закінчується {r['DOC_NAME']} ({r['PLATE']})"
-            else:
-                msg_user = f"⚠️ Через {days} днів закінчується {r['DOC_NAME']} ({r['PLATE']})"
-
-            msg_admin = f"📣 {r['FULL_NAME']} → {msg_user}"
-
-            if uid != ADMIN_ID:
                 try:
-                    await app.bot.send_message(uid, msg_user)
+                    d = datetime.strptime(r["DATE"], "%d.%m.%Y").date()
+                except:
+                    continue
+
+                days = (d - today).days
+
+                if days not in REMINDER_DAYS:
+                    continue
+
+                uid = int(r["TELEGRAM"])
+
+                # Формуємо текст
+                if days < 0:
+                    msg_user = f"⛔ ПРОСТРОЧЕНО: {r['DOC_NAME']} ({r['PLATE']})"
+                elif days == 0:
+                    msg_user = f"❗ СЬОГОДНІ закінчується {r['DOC_NAME']} ({r['PLATE']})"
+                else:
+                    msg_user = f"⚠️ Через {days} днів закінчується {r['DOC_NAME']} ({r['PLATE']})"
+
+                msg_admin = f"📣 {r['FULL_NAME']} → {msg_user}"
+
+                # Водію
+                if uid != ADMIN_ID:
+                    try:
+                        await app.bot.send_message(uid, msg_user)
+                    except:
+                        pass
+
+                # Адміну
+                try:
+                    await app.bot.send_message(ADMIN_ID, msg_admin)
                 except:
                     pass
 
-            try:
-                await app.bot.send_message(ADMIN_ID, msg_admin)
-            except:
-                pass
-
+        # Чекаємо 1 годину між перевірками
         await asyncio.sleep(3600)
 
 
