@@ -370,6 +370,38 @@ async def delete_start(update, context):
     )
     return DELETE_SELECT_DOC
 
+async def expired_docs(update, context):
+    uid = update.message.chat_id
+    rows = sheet.get_all_records()
+
+    expired = []
+
+    today = datetime.now().date()
+
+    for r in rows:
+        if str(r["TELEGRAM"]) != str(uid):
+            continue
+
+        if not r["DATE"]:
+            continue
+
+        try:
+            d = datetime.strptime(r["DATE"], "%d.%m.%Y").date()
+        except:
+            continue
+
+        if d < today:
+            expired.append(
+                f"⛔ {r['DOC_NAME']} ({r['PLATE']}) — закінчився {r['DATE']}"
+            )
+
+    if not expired:
+        await update.message.reply_text("У вас немає прострочених документів ✔")
+        return
+
+    text = "Ваші прострочені документи:\n\n" + "\n".join(expired)
+    await update.message.reply_text(text)
+
 
 async def delete_process(update, context):
     q = update.callback_query
@@ -438,7 +470,7 @@ async def reminders(app: Application):
             except:
                 pass
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(3600)
 
 
 # ========== POST_INIT (ВАЖЛИВО!) ========== #
@@ -518,8 +550,10 @@ def main():
 
     # ----- ІНШІ КОМАНДИ -----
     app.add_handler(MessageHandler(filters.Regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
+    
     app.add_handler(MessageHandler(filters.Regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("expired", expired_docs))
 
     print("BOT RUNNING 🚀")
     app.run_polling()
