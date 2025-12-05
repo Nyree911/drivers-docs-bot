@@ -510,7 +510,7 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
 
 # ========== POST_INIT (ВАЖЛИВО!) ========== #
 
-async def post_init(app):
+async def post_init(app: Application):
 
     # очищення webhook
     await app.bot.delete_webhook(drop_pending_updates=True)
@@ -523,7 +523,7 @@ async def post_init(app):
     )
 
     # Повідомлення адміну
-    await notify_admin_start(app)
+    app.create_task(notify_admin_start(app))
 
 # ---------- ГЛОБАЛЬНИЙ ВИХІД З ДІАЛОГУ ---------- #
 
