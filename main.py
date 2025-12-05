@@ -224,7 +224,7 @@ async def add_doc_name(update, context):
 
 async def add_custom_doc(update, context):
     context.user_data["doc_name"] = norm(update.message.text)
-    await update.message.reply_text("Дата документа (ДД.ММ.РРРР):")
+    await update.message.reply_text("Дата завершення терміну дії документа (ДД.ММ.РРРР):")
     return ADD_ENTER_DATE
 
 
