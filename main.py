@@ -510,7 +510,7 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
 
 # ========== POST_INIT (ВАЖЛИВО!) ========== #
 
-async def post_init(app):
+async def post_init(app, bot):
     try:
         await app.bot.delete_webhook(drop_pending_updates=True)
         print("Webhook deleted OK")
