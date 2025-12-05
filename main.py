@@ -447,6 +447,11 @@ async def notify_admin_start(app):
     except Exception as e:
         print("Admin notify error:", e)
 
+#_________ВВЕДЕННЯ ЧОГОСЬ ЩО НЕ ВІДПОВІДАЄ ВИБРАНОМУ РОЗДІЛУ______
+
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return ConversationHandler.END
+
 # ========== REMINDERS ========== #
 
 REMINDER_DAYS = {30, 25, 20, 14, 7, 3, 2, 1, 0}
@@ -546,7 +551,7 @@ def main():
         states={
             REG_ENTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_save)],
         },
-        fallbacks=[],
+        fallbacks=[MessageHandler(filters.ALL, cancel_conversation)],
         per_message=False
     )
     app.add_handler(register_conv)
@@ -563,7 +568,7 @@ def main():
             ADD_ENTER_CUSTOM_DOC: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_doc)],
             ADD_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_date)],
         },
-        fallbacks=[],
+        fallbacks=[MessageHandler(filters.ALL, cancel_conversation)],
         per_message=False
     )
     app.add_handler(add_doc_conv)
@@ -577,7 +582,7 @@ def main():
             UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
             UPDATE_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_save)],
         },
-        fallbacks=[],
+        fallbacks=[MessageHandler(filters.ALL, cancel_conversation)],
         per_message=False
     )
     app.add_handler(update_doc_conv)
@@ -590,7 +595,7 @@ def main():
         states={
             DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
         },
-        fallbacks=[],
+        fallbacks=[MessageHandler(filters.ALL, cancel_conversation)],
         per_message=False
     )
     app.add_handler(delete_doc_conv)
