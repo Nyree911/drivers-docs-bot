@@ -457,72 +457,72 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 REMINDER_DAYS = {30, 25, 20, 14, 7, 3, 2, 1, 0}
 
 
-async def reminders(app: Application):
-    while True:
-        now = datetime.now()
-        hour = now.hour
+async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
+    app = context.application
 
-        # Надсилати повідомлення лише між 11:00 та 21:00
-        if 11 <= hour < 21:
+    now = datetime.now()
+    hour = now.hour
 
-            data = sheet.get_all_records()
-            today = date.today()
+    if not (11 <= hour < 21):
+        return
 
-            for r in data:
+    today = date.today()
+    data = sheet.get_all_records()
 
-                if not r["DOC_NAME"]:
-                    continue
+    for r in data:
+        if not r["DOC_NAME"]:
+            continue
 
-                try:
-                    d = datetime.strptime(r["DATE"], "%d.%m.%Y").date()
-                except:
-                    continue
+        try:
+            d = datetime.strptime(r["DATE"], "%d.%m.%Y").date()
+        except:
+            continue
 
-                days = (d - today).days
+        days = (d - today).days
+        if days not in REMINDER_DAYS:
+            continue
 
-                if days not in REMINDER_DAYS:
-                    continue
+        uid = int(r["TELEGRAM"])
 
-                uid = int(r["TELEGRAM"])
+        # Формуємо текст
+        if days < 0:
+            msg_user = f"⛔ ПРОСТРОЧЕНО: {r['DOC_NAME']} ({r['PLATE']})"
+        elif days == 0:
+            msg_user = f"❗ СЬОГОДНІ закінчується {r['DOC_NAME']} ({r['PLATE']})"
+        else:
+            msg_user = f"⚠️ Через {days} днів закінчується {r['DOC_NAME']} ({r['PLATE']})"
 
-                # Формуємо текст
-                if days < 0:
-                    msg_user = f"⛔ ПРОСТРОЧЕНО: {r['DOC_NAME']} ({r['PLATE']})"
-                elif days == 0:
-                    msg_user = f"❗ СЬОГОДНІ закінчується {r['DOC_NAME']} ({r['PLATE']})"
-                else:
-                    msg_user = f"⚠️ Через {days} днів закінчується {r['DOC_NAME']} ({r['PLATE']})"
+        msg_admin = f"📣 {r['FULL_NAME']} → {msg_user}"
 
-                msg_admin = f"📣 {r['FULL_NAME']} → {msg_user}"
+        # Надсилання водію
+        if uid != ADMIN_ID:
+            try:
+                await app.bot.send_message(uid, msg_user)
+            except:
+                pass
 
-                # Водію
-                if uid != ADMIN_ID:
-                    try:
-                        await app.bot.send_message(uid, msg_user)
-                    except:
-                        pass
-
-                # Адміну
-                try:
-                    await app.bot.send_message(ADMIN_ID, msg_admin)
-                except:
-                    pass
-
-        # Чекаємо 1 годину між перевірками
-        await asyncio.sleep(3600)
+        # Адміну
+        try:
+            await app.bot.send_message(ADMIN_ID, msg_admin)
+        except:
+            pass
 
 
 # ========== POST_INIT (ВАЖЛИВО!) ========== #
 
 async def post_init(app):
 
-     # видаляємо вебхук, щоб polling працював без конфліктів
+    # очищення webhook
     await app.bot.delete_webhook(drop_pending_updates=True)
 
-    # Запускаємо фоновий нагадувач
-    app.create_task(reminders(app))
+    # ЗАПУСК РОБОТИ КОЖНУ ГОДИНУ
+    app.job_queue.run_repeating(
+        reminders_job,
+        interval=3600,   # 1 година
+        first=5          # запуск через 5 сек після старту
+    )
 
-    # Повідомляємо адміністратора
+    # Повідомлення адміну
     await notify_admin_start(app)
 
 # ---------- ГЛОБАЛЬНИЙ ВИХІД З ДІАЛОГУ ---------- #
