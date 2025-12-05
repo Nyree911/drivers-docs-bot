@@ -510,6 +510,10 @@ async def reminders(app: Application):
 # ========== POST_INIT (ВАЖЛИВО!) ========== #
 
 async def post_init(app):
+
+     # видаляємо вебхук, щоб polling працював без конфліктів
+    await app.bot.delete_webhook(drop_pending_updates=True)
+
     # Запускаємо фоновий нагадувач
     app.create_task(reminders(app))
 
