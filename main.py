@@ -510,20 +510,32 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
 
 # ========== POST_INIT (ВАЖЛИВО!) ========== #
 
-async def post_init(app: Application):
+async def post_init(app):
+    try:
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        print("Webhook deleted OK")
+    except Exception as e:
+        print("Webhook delete error:", e)
 
-    # очищення webhook
-    await app.bot.delete_webhook(drop_pending_updates=True)
+    # Стартує нагадування
+    try:
+        app.job_queue.run_repeating(
+            reminders_job,
+            interval=3600,
+            first=5
+        )
+        print("Job queue started")
+    except Exception as e:
+        print("Job queue error:", e)
 
-    # ЗАПУСК РОБОТИ КОЖНУ ГОДИНУ
-    app.job_queue.run_repeating(
-        reminders_job,
-        interval=3600,   # 1 година
-        first=5          # запуск через 5 сек після старту
-    )
-
-    # Повідомлення адміну
-    app.create_task(notify_admin_start(app))
+    # Повідомлення адміну — БЕЗ await
+    try:
+        app.create_task(
+            app.bot.send_message(ADMIN_ID, "🔄 Бот перезавантажено після деплою.")
+        )
+        print("Admin notified")
+    except Exception as e:
+        print("Admin notify error:", e)
 
 # ---------- ГЛОБАЛЬНИЙ ВИХІД З ДІАЛОГУ ---------- #
 
