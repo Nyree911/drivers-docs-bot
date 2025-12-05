@@ -133,7 +133,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Головне меню:",
         reply_markup=ReplyKeyboardMarkup(
             [
-                ["🚘 МОЇ ТРАНСПОРТИ"],
                 ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
                 ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"],
             ],
@@ -235,7 +234,7 @@ async def add_doc_date(update, context):
     try:
         datetime.strptime(text, "%d.%m.%Y")
     except:
-        await update.message.reply_text("Неправильний формат. 12.05.2025")
+        await update.message.reply_text("Неправильний формат. ДД.ММ.РРРР")
         return ADD_ENTER_DATE
 
     uid = update.message.chat_id
