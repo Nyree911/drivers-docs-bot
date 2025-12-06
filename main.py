@@ -178,7 +178,19 @@ async def add_doc_start(update, context):
         [InlineKeyboardButton("🚗 АВТО", callback_data="AUTO")],
         [InlineKeyboardButton("🛞 ПРИЧІП", callback_data="TRAILER")],
     ]
-    await update.message.reply_text("Оберіть тип транспорту:")
+
+    # При вході в сценарій додавання – ховаємо головні кнопки
+    await update.message.reply_text(
+        "Починаємо додавання документа…",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+    # Показуємо інлайн-кнопки вибору типу транспорту
+    await update.message.reply_text(
+        "Оберіть тип транспорту:",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
+
     return ADD_SELECT_TYPE
 
 
