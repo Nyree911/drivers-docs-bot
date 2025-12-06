@@ -5,13 +5,13 @@ import json
 import re
 from datetime import datetime, date
 
-##Telegram##
+## Telegram ##
 from telegram import (
     ReplyKeyboardMarkup,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     ReplyKeyboardRemove,
-    Update
+    Update,
 )
 from telegram.ext import (
     Application,
@@ -32,13 +32,14 @@ from oauth2client.service_account import ServiceAccountCredentials
 # CONFIG
 # ============================================================
 
-TOKEN = "8428053990:AAF5GvsOr6JNgtZdqNyKOFDW1iBDZs3ygW4"
+TOKEN = "8428053990:AAF5GvsOr6JNgtZdqNyK0FDW1iBDZs3ygW4"
 ADMIN_ID = 433247695
 
 SPREAD_NAME = "Документи водіїв"
 SHEET_NAME = "Drivers"
 
 logging.basicConfig(level=logging.INFO)
+
 
 # ============================================================
 # GOOGLE AUTH (Railway + local)
@@ -68,6 +69,7 @@ if sheet.row_values(1) != REQUIRED_COLUMNS:
     sheet.delete_rows(1)
     sheet.insert_row(REQUIRED_COLUMNS, 1)
 
+
 # ============================================================
 # STATES
 # ============================================================
@@ -89,15 +91,15 @@ if sheet.row_values(1) != REQUIRED_COLUMNS:
 # HELPERS
 # ============================================================
 
-def norm(text):
+def norm(text: str) -> str:
     return " ".join(text.upper().split())
 
 
-def valid_plate(text):
+def valid_plate(text: str) -> bool:
     return re.fullmatch(r"[A-ZА-Я]{2}[0-9]{4}[A-ZА-Я]{2}", text.upper()) is not None
 
 
-def user_exists(uid):
+def user_exists(uid) -> bool:
     return any(str(r["TELEGRAM"]) == str(uid) for r in sheet.get_all_records())
 
 
@@ -105,8 +107,25 @@ def get_user_docs(uid):
     return [r for r in sheet.get_all_records() if str(r["TELEGRAM"]) == str(uid)]
 
 
+def get_valid_docs(uid):
+    """Тільки реальні документи: без пустих номерів, назв і дат."""
+    return [
+        r for r in sheet.get_all_records()
+        if str(r["TELEGRAM"]) == str(uid)
+        and r["PLATE"]
+        and r["DOC_NAME"]
+        and r["DATE"]
+    ]
+
+
 def get_user_plates(uid):
-    return sorted({r["PLATE"] for r in sheet.get_all_records() if str(r["TELEGRAM"]) == str(uid)})
+    return sorted(
+        {
+            r["PLATE"]
+            for r in sheet.get_all_records()
+            if str(r["TELEGRAM"]) == str(uid) and r["PLATE"]
+        }
+    )
 
 
 DOC_LABELS = {
@@ -120,20 +139,23 @@ DOC_LABELS = {
 
 
 # ============================================================
-# START
+# START / REGISTRATION
 # ============================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Точка входу: якщо користувач новий — просимо імʼя, інакше показуємо меню."""
     chat_id = update.effective_chat.id
     message = update.effective_message
 
     if not user_exists(chat_id):
         await message.reply_text(
-            "Ви вперше користуєтесь ботом.\nБудь ласка, зареєструйтесь:",
-            reply_markup=ReplyKeyboardMarkup([["🔰 ЗАРЕЄСТРУВАТИСЯ"]], resize_keyboard=True)
+            "Ви вперше користуєтесь ботом.\n"
+            "Будь ласка, введіть ваше ІМ’Я ТА ПРІЗВИЩЕ:",
+            reply_markup=ReplyKeyboardRemove(),
         )
-        return
+        return REG_ENTER_NAME
 
+    # Відомий користувач — показуємо меню
     await message.reply_text(
         "Головне меню:",
         reply_markup=ReplyKeyboardMarkup(
@@ -141,34 +163,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
                 ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"],
             ],
-            resize_keyboard=True
-        )
+            resize_keyboard=True,
+        ),
     )
-
-
-# ============================================================
-# REGISTRATION
-# ============================================================
-
-async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Введіть ваше ІМ’Я ТА ПРІЗВИЩЕ:",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return REG_ENTER_NAME
+    return ConversationHandler.END
 
 
 async def register_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Збереження ПІБ при реєстрації."""
     full = update.message.text.strip()
 
     if len(full.split()) < 2:
-        await update.message.reply_text("Введіть ім’я та прізвище 📝")
+        await update.message.reply_text("Введіть ім’я та прізвище повністю 📝")
         return REG_ENTER_NAME
 
     uid = update.message.chat_id
-    sheet.append_row([full, str(uid), "", "", "", ""])
+
+    # На всяк випадок, якщо рядок вже є — не дублюємо
+    rows = sheet.get_all_records()
+    existing = [r for r in rows if str(r["TELEGRAM"]) == str(uid)]
+    if not existing:
+        sheet.append_row([full, str(uid), "", "", "", ""])
+    else:
+        # Оновимо імʼя, якщо воно змінилось
+        for i, r in enumerate(rows, start=2):
+            if str(r["TELEGRAM"]) == str(uid):
+                sheet.update_cell(i, 1, full)
+                break
 
     await update.message.reply_text("Реєстрацію завершено ✔")
+
+    # Показуємо меню
     await start(update, context)
     return ConversationHandler.END
 
@@ -183,16 +208,14 @@ async def add_doc_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🛞 ПРИЧІП", callback_data="TRAILER")],
     ]
 
-    # При вході в сценарій – ховаємо головне меню
     await update.message.reply_text(
         "Починаємо додавання документа…",
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=ReplyKeyboardRemove(),
     )
 
-    # Показуємо інлайн-вибір типу транспорту
     await update.message.reply_text(
         "Оберіть тип транспорту:",
-        reply_markup=InlineKeyboardMarkup(kb)
+        reply_markup=InlineKeyboardMarkup(kb),
     )
 
     return ADD_SELECT_TYPE
@@ -221,7 +244,7 @@ async def add_doc_plate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "Оберіть документ:",
-        reply_markup=InlineKeyboardMarkup(kb)
+        reply_markup=InlineKeyboardMarkup(kb),
     )
     return ADD_SELECT_DOC
 
@@ -259,16 +282,28 @@ async def add_doc_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADD_ENTER_DATE
 
     uid = update.message.chat_id
-    full = [r["FULL_NAME"] for r in sheet.get_all_records() if str(r["TELEGRAM"]) == str(uid)][0]
+    rows = sheet.get_all_records()
+    user_rows = [r for r in rows if str(r["TELEGRAM"]) == str(uid)]
 
-    sheet.append_row([
-        full,
-        str(uid),
-        context.user_data["vehicle_type"],
-        context.user_data["plate"],
-        context.user_data["doc_name"],
-        text,
-    ])
+    if not user_rows:
+        await update.message.reply_text(
+            "❗ Ваш профіль у таблиці не знайдено.\n"
+            "Натисніть /start і зареєструйтесь заново."
+        )
+        return ConversationHandler.END
+
+    full = user_rows[0]["FULL_NAME"]
+
+    sheet.append_row(
+        [
+            full,
+            str(uid),
+            context.user_data["vehicle_type"],
+            context.user_data["plate"],
+            context.user_data["doc_name"],
+            text,
+        ]
+    )
 
     await update.message.reply_text("Документ додано ✔")
     await start(update, context)
@@ -294,13 +329,15 @@ async def my_vehicles(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 async def my_docs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    docs = get_user_docs(update.message.chat_id)
+    docs = get_valid_docs(update.message.chat_id)
 
     if not docs:
         await update.message.reply_text("Документів немає.")
         return
 
-    txt = "\n".join(f"{d['PLATE']} | {d['DOC_NAME']} — {d['DATE']}" for d in docs)
+    txt = "\n".join(
+        f"{d['PLATE']} | {d['DOC_NAME']} — {d['DATE']}" for d in docs
+    )
     await update.message.reply_text(txt)
 
 
@@ -309,29 +346,30 @@ async def my_docs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 async def update_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    docs = get_user_docs(update.message.chat_id)
+    docs = get_valid_docs(update.message.chat_id)
 
     if not docs:
         await update.message.reply_text("Документів немає.")
         return ConversationHandler.END
 
     kb = [
-        [InlineKeyboardButton(
-            f"{d['PLATE']} — {d['DOC_NAME']}",
-            callback_data=f"{d['PLATE']}|{d['DOC_NAME']}"
-        )]
+        [
+            InlineKeyboardButton(
+                f"{d['PLATE']} — {d['DOC_NAME']}",
+                callback_data=f"{d['PLATE']}|{d['DOC_NAME']}",
+            )
+        ]
         for d in docs
     ]
 
-    # Ховаємо головне меню
     await update.message.reply_text(
         "Починаємо оновлення документа…",
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=ReplyKeyboardRemove(),
     )
 
     await update.message.reply_text(
         "Оберіть документ:",
-        reply_markup=InlineKeyboardMarkup(kb)
+        reply_markup=InlineKeyboardMarkup(kb),
     )
 
     return UPDATE_SELECT_DOC
@@ -383,29 +421,30 @@ async def update_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 async def delete_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    docs = get_user_docs(update.message.chat_id)
+    docs = get_valid_docs(update.message.chat_id)
 
     if not docs:
         await update.message.reply_text("Немає документів.")
         return ConversationHandler.END
 
     kb = [
-        [InlineKeyboardButton(
-            f"{d['PLATE']} — {d['DOC_NAME']}",
-            callback_data=f"{d['PLATE']}|{d['DOC_NAME']}"
-        )]
+        [
+            InlineKeyboardButton(
+                f"{d['PLATE']} — {d['DOC_NAME']}",
+                callback_data=f"{d['PLATE']}|{d['DOC_NAME']}",
+            )
+        ]
         for d in docs
     ]
 
-    # Ховаємо головне меню
     await update.message.reply_text(
         "Починаємо видалення документа…",
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=ReplyKeyboardRemove(),
     )
 
     await update.message.reply_text(
         "Оберіть документ:",
-        reply_markup=InlineKeyboardMarkup(kb)
+        reply_markup=InlineKeyboardMarkup(kb),
     )
 
     return DELETE_SELECT_DOC
@@ -420,13 +459,14 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     rows = sheet.get_all_records()
     for i, r in enumerate(rows, start=2):
-        if r["PLATE"] == plate and r["DOC_NAME"] == doc and str(r["TELEGRAM"]) == str(uid):
+        if r["PLATE"] == plate and r["DOC_NAME"] == doc and str(r["TELEGRAM"]) == str(
+            uid
+        ):
             sheet.delete_rows(i)
             break
 
     await q.edit_message_text("Документ видалено ✔")
 
-    # Показуємо меню знову
     await q.message.reply_text(
         "Головне меню:",
         reply_markup=ReplyKeyboardMarkup(
@@ -434,8 +474,8 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
                 ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"],
             ],
-            resize_keyboard=True
-        )
+            resize_keyboard=True,
+        ),
     )
 
     return ConversationHandler.END
@@ -446,6 +486,7 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 REMINDER_DAYS = {30, 25, 20, 14, 7, 3, 2, 1, 0}
+
 
 async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
@@ -502,25 +543,22 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
 async def post_init(app: Application):
     print("[post_init] Running…")
 
-    # Видаляємо webhook щоб polling працював
     try:
         await app.bot.delete_webhook(drop_pending_updates=True)
         print("[post_init] Webhook deleted")
     except Exception as e:
         print("[post_init] Webhook delete error:", e)
 
-    # Запускаємо job_queue
     try:
         app.job_queue.run_repeating(
             reminders_job,
-            interval=3600,     # кожну годину
-            first=10           # перший запуск через 10 секунд
+            interval=3600,   # щогодини
+            first=10,        # перший запуск через 10 секунд
         )
         print("[post_init] Job queue started")
     except Exception as e:
         print("[post_init] Job queue error:", e)
 
-    # Повідомляємо адміну
     try:
         app.create_task(
             app.bot.send_message(ADMIN_ID, "🔄 Бот перезавантажено і job_queue активний.")
@@ -546,52 +584,72 @@ def main():
 
     print("App OK")
 
-    # --- ConversationHandlers ---
+    # --- Registration (/start) ---
+    app.add_handler(
+        ConversationHandler(
+            entry_points=[CommandHandler("start", start)],
+            states={
+                REG_ENTER_NAME: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, register_save)
+                ],
+            },
+            fallbacks=[CommandHandler("start", start)],
+        )
+    )
 
-    app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("🔰 ЗАРЕЄСТРУВАТИСЯ"), register_start)],
-        states={REG_ENTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_save)]},
-        fallbacks=[CommandHandler("start", start)]
-    ))
+    # --- Add document ---
+    app.add_handler(
+        ConversationHandler(
+            entry_points=[MessageHandler(filters.Regex("➕ ДОДАТИ ДОКУМЕНТ"), add_doc_start)],
+            states={
+                ADD_SELECT_TYPE: [CallbackQueryHandler(add_doc_type)],
+                ADD_ENTER_PLATE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_plate)
+                ],
+                ADD_SELECT_DOC: [CallbackQueryHandler(add_doc_name)],
+                ADD_ENTER_CUSTOM_DOC: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_doc)
+                ],
+                ADD_ENTER_DATE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_date)
+                ],
+            },
+            fallbacks=[CommandHandler("start", start)],
+        )
+    )
 
-    app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("➕ ДОДАТИ ДОКУМЕНТ"), add_doc_start)],
-        states={
-            ADD_SELECT_TYPE: [CallbackQueryHandler(add_doc_type)],
-            ADD_ENTER_PLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_plate)],
-            ADD_SELECT_DOC: [CallbackQueryHandler(add_doc_name)],
-            ADD_ENTER_CUSTOM_DOC: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_doc)],
-            ADD_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_date)],
-        },
-        fallbacks=[CommandHandler("start", start)]
-    ))
+    # --- Update document ---
+    app.add_handler(
+        ConversationHandler(
+            entry_points=[MessageHandler(filters.Regex("✏️ ОНОВИТИ ДОКУМЕНТ"), update_start)],
+            states={
+                UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
+                UPDATE_ENTER_DATE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, update_save)
+                ],
+            },
+            fallbacks=[CommandHandler("start", start)],
+        )
+    )
 
-    app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("✏️ ОНОВИТИ ДОКУМЕНТ"), update_start)],
-        states={
-            UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
-            UPDATE_ENTER_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_save)],
-        },
-        fallbacks=[CommandHandler("start", start)]
-    ))
+    # --- Delete document ---
+    app.add_handler(
+        ConversationHandler(
+            entry_points=[MessageHandler(filters.Regex("🗑 ВИДАЛИТИ ДОКУМЕНТ"), delete_start)],
+            states={DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)]},
+            fallbacks=[CommandHandler("start", start)],
+        )
+    )
 
-    app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("🗑 ВИДАЛИТИ ДОКУМЕНТ"), delete_start)],
-        states={DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)]},
-        fallbacks=[CommandHandler("start", start)]
-    ))
-
-    # Прості хендлери
+    # --- Simple handlers ---
     app.add_handler(MessageHandler(filters.Regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
     app.add_handler(MessageHandler(filters.Regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
-    app.add_handler(CommandHandler("start", start))
 
     print("BOT RUNNING 🚀")
 
     try:
         asyncio.run(app.run_polling())
     except RuntimeError:
-        # fallback для середовищ, де event loop вже запущений
         loop = asyncio.get_event_loop()
         loop.run_until_complete(app.run_polling())
 
