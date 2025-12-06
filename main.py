@@ -32,7 +32,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # CONFIG
 # ============================================================
 
-TOKEN = "8428053990:AAF5GvsOr6JNgtZdqNyKOFDW1iBDZs3ygW4"
+TOKEN = "8428053990:AAF5GvsOr6JNgtZdqNyKOFDW1iBDZs3ygW4"      
 ADMIN_ID = 433247695
 
 SPREAD_NAME = "Документи водіїв"
@@ -110,7 +110,8 @@ def get_user_docs(uid):
 def get_valid_docs(uid):
     """Тільки реальні документи: без пустих номерів, назв і дат."""
     return [
-        r for r in sheet.get_all_records()
+        r
+        for r in sheet.get_all_records()
         if str(r["TELEGRAM"]) == str(uid)
         and r["PLATE"]
         and r["DOC_NAME"]
@@ -128,6 +129,16 @@ def get_user_plates(uid):
     )
 
 
+def main_menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
+            ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"],
+        ],
+        resize_keyboard=True,
+    )
+
+
 DOC_LABELS = {
     "TP": "ТЕХ ПАСПОРТ",
     "BC": "БІЛИЙ СЕРТИФІКАТ",
@@ -139,11 +150,31 @@ DOC_LABELS = {
 
 
 # ============================================================
+# CANCEL (для всіх сценаріїв)
+# ============================================================
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Скасування будь-якого сценарію і повернення в меню."""
+    if update.callback_query:
+        q = update.callback_query
+        await q.answer()
+        msg = q.message
+    else:
+        msg = update.message
+
+    await msg.reply_text(
+        "Дію скасовано. Повертаюсь у головне меню.",
+        reply_markup=main_menu_keyboard(),
+    )
+    return ConversationHandler.END
+
+
+# ============================================================
 # START / REGISTRATION
 # ============================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Точка входу: якщо користувач новий — просимо імʼя, інакше показуємо меню."""
+    """Якщо користувач новий — просимо імʼя, інакше показуємо меню."""
     chat_id = update.effective_chat.id
     message = update.effective_message
 
@@ -155,22 +186,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return REG_ENTER_NAME
 
-    # Відомий користувач — показуємо меню
-    await message.reply_text(
-        "Головне меню:",
-        reply_markup=ReplyKeyboardMarkup(
-            [
-                ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
-                ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"],
-            ],
-            resize_keyboard=True,
-        ),
-    )
+    await message.reply_text("Головне меню:", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
 
 
 async def register_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Збереження ПІБ при реєстрації."""
     full = update.message.text.strip()
 
     if len(full.split()) < 2:
@@ -179,22 +199,18 @@ async def register_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     uid = update.message.chat_id
 
-    # На всяк випадок, якщо рядок вже є — не дублюємо
     rows = sheet.get_all_records()
     existing = [r for r in rows if str(r["TELEGRAM"]) == str(uid)]
     if not existing:
         sheet.append_row([full, str(uid), "", "", "", ""])
     else:
-        # Оновимо імʼя, якщо воно змінилось
         for i, r in enumerate(rows, start=2):
             if str(r["TELEGRAM"]) == str(uid):
                 sheet.update_cell(i, 1, full)
                 break
 
     await update.message.reply_text("Реєстрацію завершено ✔")
-
-    # Показуємо меню
-    await start(update, context)
+    await update.message.reply_text("Головне меню:", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
 
 
@@ -206,16 +222,15 @@ async def add_doc_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [
         [InlineKeyboardButton("🚗 АВТО", callback_data="AUTO")],
         [InlineKeyboardButton("🛞 ПРИЧІП", callback_data="TRAILER")],
+        [InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")],
     ]
 
     await update.message.reply_text(
-        "Починаємо додавання документа…",
-        reply_markup=ReplyKeyboardRemove(),
+        "Починаємо додавання документа…", reply_markup=ReplyKeyboardRemove()
     )
 
     await update.message.reply_text(
-        "Оберіть тип транспорту:",
-        reply_markup=InlineKeyboardMarkup(kb),
+        "Оберіть тип транспорту:", reply_markup=InlineKeyboardMarkup(kb)
     )
 
     return ADD_SELECT_TYPE
@@ -225,26 +240,45 @@ async def add_doc_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
+    if q.data == "CANCEL":
+        return await cancel(update, context)
+
     context.user_data["vehicle_type"] = q.data
     await q.edit_message_text("Введіть номер (AA1234BB):")
+
+    # Видаємо клавіатуру зі скасуванням
+    await q.message.reply_text(
+        "Введіть номер (AA1234BB) або натисніть 🔙 СКАСУВАТИ:",
+        reply_markup=ReplyKeyboardMarkup(
+            [["🔙 СКАСУВАТИ"]], resize_keyboard=True
+        ),
+    )
     return ADD_ENTER_PLATE
 
 
 async def add_doc_plate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     plate = update.message.text.upper().strip()
 
+    if plate == "🔙 СКАСУВАТИ":
+        return await cancel(update, context)
+
     if not valid_plate(plate):
-        await update.message.reply_text("❗ Неправильний формат. Приклад: AA1234BB")
+        await update.message.reply_text(
+            "❗ Неправильний формат. Приклад: AA1234BB",
+            reply_markup=ReplyKeyboardMarkup(
+                [["🔙 СКАСУВАТИ"]], resize_keyboard=True
+            ),
+        )
         return ADD_ENTER_PLATE
 
     context.user_data["plate"] = plate
 
     kb = [[InlineKeyboardButton(v, callback_data=k)] for k, v in DOC_LABELS.items()]
     kb.append([InlineKeyboardButton("ІНШЕ", callback_data="CUSTOM")])
+    kb.append([InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")])
 
     await update.message.reply_text(
-        "Оберіть документ:",
-        reply_markup=InlineKeyboardMarkup(kb),
+        "Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb)
     )
     return ADD_SELECT_DOC
 
@@ -253,32 +287,69 @@ async def add_doc_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
+    if q.data == "CANCEL":
+        return await cancel(update, context)
+
     if q.data == "CUSTOM":
         await q.edit_message_text("Введіть назву документа:")
+
+        await q.message.reply_text(
+            "Введіть назву документа або 🔙 СКАСУВАТИ:",
+            reply_markup=ReplyKeyboardMarkup(
+                [["🔙 СКАСУВАТИ"]], resize_keyboard=True
+            ),
+        )
         return ADD_ENTER_CUSTOM_DOC
 
     context.user_data["doc_name"] = DOC_LABELS[q.data]
     await q.edit_message_text("Введіть дату (ДД.ММ.РРРР):")
+
+    await q.message.reply_text(
+        "Введіть дату (ДД.ММ.РРРР) або 🔙 СКАСУВАТИ:",
+        reply_markup=ReplyKeyboardMarkup(
+            [["🔙 СКАСУВАТИ"]], resize_keyboard=True
+        ),
+    )
     return ADD_ENTER_DATE
 
 
 async def add_custom_doc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["doc_name"] = norm(update.message.text)
-    await update.message.reply_text("Введіть дату (ДД.ММ.РРРР):")
+    text = update.message.text.strip()
+    if text == "🔙 СКАСУВАТИ":
+        return await cancel(update, context)
+
+    context.user_data["doc_name"] = norm(text)
+    await update.message.reply_text(
+        "Введіть дату (ДД.ММ.РРРР) або 🔙 СКАСУВАТИ:",
+        reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
+    )
     return ADD_ENTER_DATE
 
 
 async def add_doc_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
+    if text == "🔙 СКАСУВАТИ":
+        return await cancel(update, context)
+
     try:
         d = datetime.strptime(text, "%d.%m.%Y").date()
     except Exception:
-        await update.message.reply_text("❗ Неправильний формат дати")
+        await update.message.reply_text(
+            "❗ Неправильний формат дати. Спробуйте ще раз.",
+            reply_markup=ReplyKeyboardMarkup(
+                [["🔙 СКАСУВАТИ"]], resize_keyboard=True
+            ),
+        )
         return ADD_ENTER_DATE
 
     if d < date.today():
-        await update.message.reply_text("❗ Дата не може бути в минулому")
+        await update.message.reply_text(
+            "❗ Дата не може бути в минулому.",
+            reply_markup=ReplyKeyboardMarkup(
+                [["🔙 СКАСУВАТИ"]], resize_keyboard=True
+            ),
+        )
         return ADD_ENTER_DATE
 
     uid = update.message.chat_id
@@ -288,7 +359,8 @@ async def add_doc_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_rows:
         await update.message.reply_text(
             "❗ Ваш профіль у таблиці не знайдено.\n"
-            "Натисніть /start і зареєструйтесь заново."
+            "Натисніть /start і зареєструйтесь заново.",
+            reply_markup=main_menu_keyboard(),
         )
         return ConversationHandler.END
 
@@ -305,8 +377,9 @@ async def add_doc_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     )
 
-    await update.message.reply_text("Документ додано ✔")
-    await start(update, context)
+    await update.message.reply_text(
+        "Документ додано ✔", reply_markup=main_menu_keyboard()
+    )
     return ConversationHandler.END
 
 
@@ -361,15 +434,14 @@ async def update_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         for d in docs
     ]
+    kb.append([InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")])
 
     await update.message.reply_text(
-        "Починаємо оновлення документа…",
-        reply_markup=ReplyKeyboardRemove(),
+        "Починаємо оновлення документа…", reply_markup=ReplyKeyboardRemove()
     )
 
     await update.message.reply_text(
-        "Оберіть документ:",
-        reply_markup=InlineKeyboardMarkup(kb),
+        "Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb)
     )
 
     return UPDATE_SELECT_DOC
@@ -379,25 +451,48 @@ async def update_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
+    if q.data == "CANCEL":
+        return await cancel(update, context)
+
     plate, doc = q.data.split("|")
     context.user_data["plate"] = plate
     context.user_data["doc"] = doc
 
     await q.edit_message_text("Введіть нову дату (ДД.ММ.РРРР):")
+
+    await q.message.reply_text(
+        "Введіть нову дату (ДД.ММ.РРРР) або 🔙 СКАСУВАТИ:",
+        reply_markup=ReplyKeyboardMarkup(
+            [["🔙 СКАСУВАТИ"]], resize_keyboard=True
+        ),
+    )
     return UPDATE_ENTER_DATE
 
 
 async def update_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
+    if text == "🔙 СКАСУВАТИ":
+        return await cancel(update, context)
+
     try:
         d = datetime.strptime(text, "%d.%m.%Y").date()
     except Exception:
-        await update.message.reply_text("❗ Неправильний формат")
+        await update.message.reply_text(
+            "❗ Неправильний формат дати.",
+            reply_markup=ReplyKeyboardMarkup(
+                [["🔙 СКАСУВАТИ"]], resize_keyboard=True
+            ),
+        )
         return UPDATE_ENTER_DATE
 
     if d < date.today():
-        await update.message.reply_text("❗ Дата не може бути в минулому")
+        await update.message.reply_text(
+            "❗ Дата не може бути в минулому.",
+            reply_markup=ReplyKeyboardMarkup(
+                [["🔙 СКАСУВАТИ"]], resize_keyboard=True
+            ),
+        )
         return UPDATE_ENTER_DATE
 
     uid = update.message.chat_id
@@ -411,8 +506,9 @@ async def update_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ):
             sheet.update_cell(i, 6, text)
 
-    await update.message.reply_text("Оновлено ✔")
-    await start(update, context)
+    await update.message.reply_text(
+        "Оновлено ✔", reply_markup=main_menu_keyboard()
+    )
     return ConversationHandler.END
 
 
@@ -436,15 +532,14 @@ async def delete_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         for d in docs
     ]
+    kb.append([InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")])
 
     await update.message.reply_text(
-        "Починаємо видалення документа…",
-        reply_markup=ReplyKeyboardRemove(),
+        "Починаємо видалення документа…", reply_markup=ReplyKeyboardRemove()
     )
 
     await update.message.reply_text(
-        "Оберіть документ:",
-        reply_markup=InlineKeyboardMarkup(kb),
+        "Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb)
     )
 
     return DELETE_SELECT_DOC
@@ -454,13 +549,18 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
+    if q.data == "CANCEL":
+        return await cancel(update, context)
+
     plate, doc = q.data.split("|")
     uid = q.from_user.id
 
     rows = sheet.get_all_records()
     for i, r in enumerate(rows, start=2):
-        if r["PLATE"] == plate and r["DOC_NAME"] == doc and str(r["TELEGRAM"]) == str(
-            uid
+        if (
+            r["PLATE"] == plate
+            and r["DOC_NAME"] == doc
+            and str(r["TELEGRAM"]) == str(uid)
         ):
             sheet.delete_rows(i)
             break
@@ -468,16 +568,8 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text("Документ видалено ✔")
 
     await q.message.reply_text(
-        "Головне меню:",
-        reply_markup=ReplyKeyboardMarkup(
-            [
-                ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
-                ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"],
-            ],
-            resize_keyboard=True,
-        ),
+        "Головне меню:", reply_markup=main_menu_keyboard()
     )
-
     return ConversationHandler.END
 
 
@@ -520,7 +612,9 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
         elif days == 0:
             msg_user = f"❗ СЬОГОДНІ закінчується {r['DOC_NAME']} ({r['PLATE']})"
         else:
-            msg_user = f"⚠️ Через {days} днів закінчується {r['DOC_NAME']} ({r['PLATE']})"
+            msg_user = (
+                f"⚠️ Через {days} днів закінчується {r['DOC_NAME']} ({r['PLATE']})"
+            )
 
         msg_admin = f"📣 {r['FULL_NAME']} → {msg_user}"
 
@@ -552,8 +646,8 @@ async def post_init(app: Application):
     try:
         app.job_queue.run_repeating(
             reminders_job,
-            interval=3600,   # щогодини
-            first=10,        # перший запуск через 10 секунд
+            interval=3600,  # щогодини
+            first=10,       # перший запуск через 10 секунд
         )
         print("[post_init] Job queue started")
     except Exception as e:
@@ -561,7 +655,9 @@ async def post_init(app: Application):
 
     try:
         app.create_task(
-            app.bot.send_message(ADMIN_ID, "🔄 Бот перезавантажено і job_queue активний.")
+            app.bot.send_message(
+                ADMIN_ID, "🔄 Бот перезавантажено і job_queue активний."
+            )
         )
         print("[post_init] Admin notified")
     except Exception as e:
@@ -584,13 +680,18 @@ def main():
 
     print("App OK")
 
+    # Глушимо службові оновлення (join/left, pinned і т.д.)
+    app.add_handler(MessageHandler(filters.StatusUpdate.ALL, lambda u, c: None))
+
     # --- Registration (/start) ---
     app.add_handler(
         ConversationHandler(
             entry_points=[CommandHandler("start", start)],
             states={
                 REG_ENTER_NAME: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, register_save)
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND, register_save
+                    ),
                 ],
             },
             fallbacks=[CommandHandler("start", start)],
@@ -600,18 +701,26 @@ def main():
     # --- Add document ---
     app.add_handler(
         ConversationHandler(
-            entry_points=[MessageHandler(filters.Regex("➕ ДОДАТИ ДОКУМЕНТ"), add_doc_start)],
+            entry_points=[
+                MessageHandler(filters.Regex("➕ ДОДАТИ ДОКУМЕНТ"), add_doc_start)
+            ],
             states={
                 ADD_SELECT_TYPE: [CallbackQueryHandler(add_doc_type)],
                 ADD_ENTER_PLATE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_plate)
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND, add_doc_plate
+                    ),
                 ],
                 ADD_SELECT_DOC: [CallbackQueryHandler(add_doc_name)],
                 ADD_ENTER_CUSTOM_DOC: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_doc)
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND, add_custom_doc
+                    )
                 ],
                 ADD_ENTER_DATE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_date)
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND, add_doc_date
+                    )
                 ],
             },
             fallbacks=[CommandHandler("start", start)],
@@ -621,11 +730,15 @@ def main():
     # --- Update document ---
     app.add_handler(
         ConversationHandler(
-            entry_points=[MessageHandler(filters.Regex("✏️ ОНОВИТИ ДОКУМЕНТ"), update_start)],
+            entry_points=[
+                MessageHandler(filters.Regex("✏️ ОНОВИТИ ДОКУМЕНТ"), update_start)
+            ],
             states={
                 UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
                 UPDATE_ENTER_DATE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, update_save)
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND, update_save
+                    )
                 ],
             },
             fallbacks=[CommandHandler("start", start)],
@@ -635,8 +748,12 @@ def main():
     # --- Delete document ---
     app.add_handler(
         ConversationHandler(
-            entry_points=[MessageHandler(filters.Regex("🗑 ВИДАЛИТИ ДОКУМЕНТ"), delete_start)],
-            states={DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)]},
+            entry_points=[
+                MessageHandler(filters.Regex("🗑 ВИДАЛИТИ ДОКУМЕНТ"), delete_start)
+            ],
+            states={
+                DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
+            },
             fallbacks=[CommandHandler("start", start)],
         )
     )
