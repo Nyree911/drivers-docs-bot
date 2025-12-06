@@ -384,6 +384,8 @@ async def delete_process(update, context):
 REMINDER_DAYS = {30, 25, 20, 14, 7, 3, 2, 1, 0}
 
 async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+    print(f"[reminders_job] Fired at {now}")
     app = context.application
 
     hour = datetime.now().hour
@@ -433,24 +435,35 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
 # POST_INIT (WEBHOOK REMOVE + JOB QUEUE)
 # ============================================================
 
-async def post_init(app: Application):
+async def post_init(app):
+    print("[post_init] Running…")
+
+    # Видаляємо webhook щоб polling працював
     try:
         await app.bot.delete_webhook(drop_pending_updates=True)
-        print("Webhook deleted")
+        print("[post_init] Webhook deleted")
     except Exception as e:
-        print("Webhook error:", e)
+        print("[post_init] Webhook delete error:", e)
 
+    # Запускаємо job_queue одразу
     try:
-        app.job_queue.run_repeating(reminders_job, interval=3600, first=10)
-        print("Job queue OK")
+        app.job_queue.run_repeating(
+            reminders_job,
+            interval=3600,     # кожну годину
+            first=10           # перший запуск через 10 секунд
+        )
+        print("[post_init] Job queue started")
     except Exception as e:
-        print("Job queue error:", e)
+        print("[post_init] Job queue error:", e)
 
+    # Повідомляємо адміну
     try:
-        await app.bot.send_message(ADMIN_ID, "🔄 Бот перезавантажено.")
+        app.create_task(
+            app.bot.send_message(ADMIN_ID, "🔄 Бот перезавантажено і job_queue активний.")
+        )
+        print("[post_init] Admin notified")
     except Exception as e:
-        print("Admin notify error:", e)
-
+        print("[post_init] Notify admin error:", e)
 
 # ============================================================
 # MAIN (IDLE COMPATIBLE)
@@ -510,6 +523,8 @@ def main():
 
     # FIX FOR IDLE
     try:
+            # Додатковий запуск задачі вручну
+        app.job_queue.run_once(reminders_job, when=5)
         asyncio.run(app.run_polling())
     except RuntimeError:
         loop = asyncio.get_event_loop()
