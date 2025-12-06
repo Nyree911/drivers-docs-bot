@@ -493,6 +493,9 @@ def main():
 
     print("App OK")
 
+    # Глушимо всі "системні" повідомлення, щоб job_queue не ламав сценарії
+    app.add_handler(MessageHandler(filters.StatusUpdate.ALL, lambda u, c: None))
+
     # Add all handlers
     app.add_handler(ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("🔰 ЗАРЕЄСТРУВАТИСЯ"), register_start)],
