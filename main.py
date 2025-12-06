@@ -407,13 +407,20 @@ async def my_docs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # UPDATE DOCUMENT
 # ============================================================
 
+# ============================================================
+# UPDATE DOCUMENT
+# ============================================================
+
 async def update_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    docs = get_valid_docs(update.message.chat_id)
+    """Старт сценарію оновлення документа."""
+    uid = update.message.chat_id
+    docs = get_valid_docs(uid)
 
     if not docs:
         await update.message.reply_text("Документів немає.")
         return ConversationHandler.END
 
+    # Кнопки з усіма документами + скасування
     kb = [
         [
             InlineKeyboardButton(
@@ -425,45 +432,58 @@ async def update_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     kb.append([InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")])
 
+    # Одне повідомлення: і «починаємо», і «оберіть»
     await update.message.reply_text(
-        "Починаємо оновлення документа…", reply_markup=ReplyKeyboardRemove()
-    )
-
-    await update.message.reply_text(
-        "Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb)
+        "Починаємо оновлення документа…\n\nОберіть документ:",
+        reply_markup=InlineKeyboardMarkup(kb),
     )
 
     return UPDATE_SELECT_DOC
 
 
 async def update_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Користувач обрав документ, тепер просимо нову дату."""
     q = update.callback_query
     await q.answer()
 
+    # Обробка інлайн-скасування
     if q.data == "CANCEL":
         return await cancel(update, context)
 
-    plate, doc = q.data.split("|")
+    # Розбираємо plate | doc_name
+    plate, doc = q.data.split("|", maxsplit=1)
     context.user_data["plate"] = plate
     context.user_data["doc"] = doc
 
-    await q.edit_message_text(
-            "Введіть нову дату (ДД.ММ.РРРР) або натисніть 🔙 СКАСУВАТИ:"
-        )
+    # Редагуємо старе повідомлення, щоби показати, що обрано
+    await q.edit_message_text(f"Обрано: {plate} — {doc}")
+
+    # І ОКРЕМО нове повідомлення з полем введення + клавіатурою «скасувати»
+    await q.message.reply_text(
+        "Введіть нову дату (ДД.ММ.РРРР) або натисніть 🔙 СКАСУВАТИ:",
+        reply_markup=ReplyKeyboardMarkup(
+            [["🔙 СКАСУВАТИ"]],
+            resize_keyboard=True,
+        ),
+    )
+
     return UPDATE_ENTER_DATE
 
 
 async def update_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Зберігаємо нову дату документа."""
     text = update.message.text.strip()
 
+    # Натиснули кнопку скасування замість дати
     if text == "🔙 СКАСУВАТИ":
         return await cancel(update, context)
 
+    # Перевіряємо формат дати
     try:
         d = datetime.strptime(text, "%d.%m.%Y").date()
     except Exception:
         await update.message.reply_text(
-            "❗ Неправильний формат дати.",
+            "❗ Неправильний формат дати. Спробуйте ще раз.",
             reply_markup=ReplyKeyboardMarkup(
                 [["🔙 СКАСУВАТИ"]], resize_keyboard=True
             ),
@@ -479,19 +499,22 @@ async def update_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return UPDATE_ENTER_DATE
 
+    # Оновлюємо рядок у таблиці
     uid = update.message.chat_id
     rows = sheet.get_all_records()
 
     for i, r in enumerate(rows, start=2):
         if (
             str(r["TELEGRAM"]) == str(uid)
-            and r["PLATE"] == context.user_data["plate"]
-            and r["DOC_NAME"] == context.user_data["doc"]
+            and r["PLATE"] == context.user_data.get("plate")
+            and r["DOC_NAME"] == context.user_data.get("doc")
         ):
             sheet.update_cell(i, 6, text)
 
+    # Повертаємося в головне меню
     await update.message.reply_text(
-        "Оновлено ✔", reply_markup=main_menu_keyboard()
+        "Оновлено ✔",
+        reply_markup=main_menu_keyboard(),
     )
     return ConversationHandler.END
 
