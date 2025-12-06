@@ -277,45 +277,45 @@ async def add_doc_plate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ADD_SELECT_DOC
 
 
-async def add_doc_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_doc_name(update, context):
     q = update.callback_query
     await q.answer()
 
     if q.data == "CANCEL":
         return await cancel(update, context)
 
+    # Якщо інше — просимо назву
     if q.data == "CUSTOM":
         await q.edit_message_text(
             "Введіть назву документа або натисніть 🔙 СКАСУВАТИ:"
         )
         return ADD_ENTER_CUSTOM_DOC
 
+    # Якщо обрана стандартна назва
     context.user_data["doc_name"] = DOC_LABELS[q.data]
-    await q.edit_message_text("Введіть дату (ДД.ММ.РРРР):")
 
-    await q.message.reply_text(
-        "Введіть дату (ДД.ММ.РРРР) або 🔙 СКАСУВАТИ:",
-        reply_markup=ReplyKeyboardMarkup(
-            [["🔙 СКАСУВАТИ"]], resize_keyboard=True
-        ),
+    await q.edit_message_text(
+        "Введіть дату (ДД.ММ.РРРР) або натисніть 🔙 СКАСУВАТИ:"
     )
     return ADD_ENTER_DATE
 
-
-async def add_custom_doc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_custom_doc(update, context):
     text = update.message.text.strip()
+
     if text == "🔙 СКАСУВАТИ":
         return await cancel(update, context)
 
     context.user_data["doc_name"] = norm(text)
+
     await update.message.reply_text(
-        "Введіть дату (ДД.ММ.РРРР) або 🔙 СКАСУВАТИ:",
-        reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
+        "Введіть дату (ДД.ММ.РРРР) або натисніть 🔙 СКАСУВАТИ:",
+        reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True)
     )
+
     return ADD_ENTER_DATE
 
 
-async def add_doc_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_doc_date(update, context):
     text = update.message.text.strip()
 
     if text == "🔙 СКАСУВАТИ":
@@ -323,54 +323,49 @@ async def add_doc_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         d = datetime.strptime(text, "%d.%m.%Y").date()
-    except Exception:
+    except:
         await update.message.reply_text(
-            "❗ Неправильний формат дати. Спробуйте ще раз.",
-            reply_markup=ReplyKeyboardMarkup(
-                [["🔙 СКАСУВАТИ"]], resize_keyboard=True
-            ),
+            "❗ Неправильний формат дати. Введіть ще раз або натисніть 🔙 СКАСУВАТИ:",
+            reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True)
         )
         return ADD_ENTER_DATE
 
     if d < date.today():
         await update.message.reply_text(
-            "❗ Дата не може бути в минулому.",
-            reply_markup=ReplyKeyboardMarkup(
-                [["🔙 СКАСУВАТИ"]], resize_keyboard=True
-            ),
+            "❗ Дата не може бути в минулому. Введіть ще раз або натисніть 🔙 СКАСУВАТИ:",
+            reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True)
         )
         return ADD_ENTER_DATE
 
+    # додаємо у таблицю
     uid = update.message.chat_id
     rows = sheet.get_all_records()
     user_rows = [r for r in rows if str(r["TELEGRAM"]) == str(uid)]
 
     if not user_rows:
         await update.message.reply_text(
-            "❗ Ваш профіль у таблиці не знайдено.\n"
-            "Натисніть /start і зареєструйтесь заново.",
-            reply_markup=main_menu_keyboard(),
+            "❗ Вас не знайдено у таблиці. Натисніть /start.",
+            reply_markup=main_menu_keyboard()
         )
         return ConversationHandler.END
 
-    full = user_rows[0]["FULL_NAME"]
+    full_name = user_rows[0]["FULL_NAME"]
 
-    sheet.append_row(
-        [
-            full,
-            str(uid),
-            context.user_data["vehicle_type"],
-            context.user_data["plate"],
-            context.user_data["doc_name"],
-            text,
-        ]
-    )
+    sheet.append_row([
+        full_name,
+        str(uid),
+        context.user_data["vehicle_type"],
+        context.user_data["plate"],
+        context.user_data["doc_name"],
+        text
+    ])
 
     await update.message.reply_text(
-        "Документ додано ✔", reply_markup=main_menu_keyboard()
+        "Документ додано ✔",
+        reply_markup=main_menu_keyboard()
     )
-    return ConversationHandler.END
 
+    return ConversationHandler.END
 
 # ============================================================
 # MY VEHICLES
