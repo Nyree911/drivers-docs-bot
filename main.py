@@ -178,7 +178,7 @@ async def add_doc_start(update, context):
         [InlineKeyboardButton("🚗 АВТО", callback_data="AUTO")],
         [InlineKeyboardButton("🛞 ПРИЧІП", callback_data="TRAILER")],
     ]
-    await update.message.reply_text("Оберіть тип транспорту:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text("Оберіть тип транспорту:")
     return ADD_SELECT_TYPE
 
 
@@ -203,7 +203,7 @@ async def add_doc_plate(update, context):
     kb = [[InlineKeyboardButton(v, callback_data=k)] for k, v in DOC_LABELS.items()]
     kb.append([InlineKeyboardButton("ІНШЕ", callback_data="CUSTOM")])
 
-    await update.message.reply_text("Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text("Оберіть документ:")
     return ADD_SELECT_DOC
 
 
@@ -300,7 +300,7 @@ async def update_start(update, context):
         for d in docs
     ]
 
-    await update.message.reply_text("Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text("Оберіть документ:")
     return UPDATE_SELECT_DOC
 
 
@@ -356,7 +356,7 @@ async def delete_start(update, context):
         for d in docs
     ]
 
-    await update.message.reply_text("Оберіть документ:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text("Оберіть документ:")
     return DELETE_SELECT_DOC
 
 
