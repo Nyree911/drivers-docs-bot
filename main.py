@@ -32,7 +32,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # CONFIG
 # ============================================================
 
-TOKEN = "8428053990:AAF5GvsOr6JNgtZdqNyK0FDW1iBDZs3ygW4"
+TOKEN = "8428053990:AAF5GvsOr6JNgtZdqNyKOFDW1iBDZs3ygW4"
 ADMIN_ID = 433247695
 
 SPREAD_NAME = "Документи водіїв"
