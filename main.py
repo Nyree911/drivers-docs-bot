@@ -244,14 +244,8 @@ async def add_doc_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel(update, context)
 
     context.user_data["vehicle_type"] = q.data
-    await q.edit_message_text("Введіть номер (AA1234BB):")
-
-    # Видаємо клавіатуру зі скасуванням
-    await q.message.reply_text(
-        "Введіть номер (AA1234BB) або натисніть 🔙 СКАСУВАТИ:",
-        reply_markup=ReplyKeyboardMarkup(
-            [["🔙 СКАСУВАТИ"]], resize_keyboard=True
-        ),
+    await q.edit_message_text(
+        "Введіть номер (AA1234BB) або натисніть 🔙 СКАСУВАТИ:"
     )
     return ADD_ENTER_PLATE
 
@@ -291,13 +285,8 @@ async def add_doc_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel(update, context)
 
     if q.data == "CUSTOM":
-        await q.edit_message_text("Введіть назву документа:")
-
-        await q.message.reply_text(
-            "Введіть назву документа або 🔙 СКАСУВАТИ:",
-            reply_markup=ReplyKeyboardMarkup(
-                [["🔙 СКАСУВАТИ"]], resize_keyboard=True
-            ),
+        await q.edit_message_text(
+            "Введіть назву документа або натисніть 🔙 СКАСУВАТИ:"
         )
         return ADD_ENTER_CUSTOM_DOC
 
@@ -458,14 +447,9 @@ async def update_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["plate"] = plate
     context.user_data["doc"] = doc
 
-    await q.edit_message_text("Введіть нову дату (ДД.ММ.РРРР):")
-
-    await q.message.reply_text(
-        "Введіть нову дату (ДД.ММ.РРРР) або 🔙 СКАСУВАТИ:",
-        reply_markup=ReplyKeyboardMarkup(
-            [["🔙 СКАСУВАТИ"]], resize_keyboard=True
-        ),
-    )
+    await q.edit_message_text(
+            "Введіть нову дату (ДД.ММ.РРРР) або натисніть 🔙 СКАСУВАТИ:"
+        )
     return UPDATE_ENTER_DATE
 
 
