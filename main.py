@@ -588,7 +588,7 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
     app = context.application
 
     hour = datetime.now().hour
-    if not (11 <= hour < 21):
+    if not (9 <= hour < 18):
         return
 
     today = date.today()
