@@ -308,7 +308,7 @@ async def add_custom_doc(update, context):
     context.user_data["doc_name"] = norm(text)
 
     await update.message.reply_text(
-        "Введіть дату (ДД.ММ.РРРР) або натисніть 🔙 СКАСУВАТИ:",
+        "Введіть дату завершення терміну дії (ДД.ММ.РРРР) або натисніть 🔙 СКАСУВАТИ:",
         reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True)
     )
 
