@@ -427,10 +427,19 @@ async def my_docs(update, context):
     # Формуємо текст
     lines = []
     for d in processed:
-        lines.append(f"{d['plate']} | {d['name']} — {d['date']} {d['status']}")
+        lines.append(
+             f"{d['plate']} | {d['name']} — {d['date']} {d['status']}"
+    )
+    lines = []
+    for d in processed:
+       lines.append(
+          f"{d['plate']} | {d['name']} — {d['date']} {d['status']}"
+          )
+       lines.append("")  # порожній рядок між документами
 
-    await update.message.reply_text("\n".join(lines))
+await update.message.reply_text("\n".join(lines).strip())lines.append("")  # порожній рядок між документами
 
+await update.message.reply_text("\n".join(lines).strip())
 # ============================================================
 # UPDATE DOCUMENT
 # ============================================================
