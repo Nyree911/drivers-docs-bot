@@ -418,7 +418,7 @@ async def my_docs(update, context):
         elif days_left == 0:
             status = "(сьогодні)"
         else:
-            status = f"(залишилось {days_left} дн.)"
+            status = f"(залиш. {days_left} дн.)"
 
         processed.append({
             "plate": d["PLATE"],
