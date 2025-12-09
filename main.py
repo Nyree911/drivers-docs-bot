@@ -385,18 +385,51 @@ async def my_vehicles(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # MY DOCS
 # ============================================================
 
-async def my_docs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    docs = get_valid_docs(update.message.chat_id)
+async def my_docs(update, context):
+    uid = update.message.chat_id
+    docs = get_user_docs(uid)
 
     if not docs:
         await update.message.reply_text("Документів немає.")
         return
 
-    txt = "\n".join(
-        f"{d['PLATE']} | {d['DOC_NAME']} — {d['DATE']}" for d in docs
-    )
-    await update.message.reply_text(txt)
+    today = date.today()
+    processed = []
 
+    # Обробляємо кожен документ
+    for d in docs:
+        try:
+            exp = datetime.strptime(d["DATE"], "%d.%m.%Y").date()
+        except:
+            continue
+
+        days_left = (exp - today).days
+
+        # Формуємо статус
+        if days_left < 0:
+            status = f"(прострочено {abs(days_left)} дн.)"
+        elif days_left == 0:
+            status = "(сьогодні)"
+        else:
+            status = f"(залишилось {days_left} дн.)"
+
+        processed.append({
+            "plate": d["PLATE"],
+            "name": d["DOC_NAME"],
+            "date": d["DATE"],
+            "days": days_left,
+            "status": status
+        })
+
+    # Сортуємо від найменшого days_left (найближча дата)
+    processed.sort(key=lambda x: x["days"])
+
+    # Формуємо текст
+    lines = []
+    for d in processed:
+        lines.append(f"{d['plate']} | {d['name']} — {d['date']} {d['status']}")
+
+    await update.message.reply_text("\n".join(lines))
 
 # ============================================================
 # UPDATE DOCUMENT
