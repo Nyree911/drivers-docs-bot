@@ -436,7 +436,7 @@ async def my_docs(update, context):
     for p in processed:
         block = (
             f"{p['plate']} | {p['doc']}\n"
-            f"   Дата: {p['date']} {p['status']}"
+            f"   Дата завершення: {p['date']} {p['status']}"
         )
         lines.append(block)
         lines.append("")  # порожній рядок між документами
