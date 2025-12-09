@@ -385,6 +385,7 @@ async def my_vehicles(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # MY DOCS
 # ============================================================
 
+
 async def my_docs(update, context):
     uid = update.message.chat_id
     docs = get_user_docs(uid)
@@ -396,14 +397,20 @@ async def my_docs(update, context):
     today = date.today()
     processed = []
 
-    # Обробляємо кожен документ
+    # Обробляємо документи
     for d in docs:
+        raw_date = d.get("DATE", "").strip()
+        if not raw_date:
+            continue
+
+        # Парсимо дату
         try:
-            exp = datetime.strptime(d["DATE"], "%d.%m.%Y").date()
+            exp_date = datetime.strptime(raw_date, "%d.%m.%Y").date()
         except:
             continue
 
-        days_left = (exp - today).days
+        # Дні до закінчення
+        days_left = (exp_date - today).days
 
         # Формуємо статус
         if days_left < 0:
@@ -415,31 +422,31 @@ async def my_docs(update, context):
 
         processed.append({
             "plate": d["PLATE"],
-            "name": d["DOC_NAME"],
-            "date": d["DATE"],
+            "doc": d["DOC_NAME"],
+            "date": raw_date,
             "days": days_left,
             "status": status
         })
 
-    # Сортуємо від найменшого days_left (найближча дата)
+    # Сортування від найближчої дати → до дальньої
     processed.sort(key=lambda x: x["days"])
 
-    # Формуємо текст
+    # Формування гарного тексту з порожніми рядками
     lines = []
-    for d in processed:
-        lines.append(
-             f"{d['plate']} | {d['name']} — {d['date']} {d['status']}"
-    )
-    lines = []
-    for d in processed:
-       lines.append(
-          f"{d['plate']} | {d['name']} — {d['date']} {d['status']}"
-          )
-       lines.append("")  # порожній рядок між документами
+    for p in processed:
+        block = (
+            f"{p['plate']} | {p['doc']}\n"
+            f"   Дата: {p['date']} {p['status']}"
+        )
+        lines.append(block)
+        lines.append("")  # порожній рядок між документами
 
-await update.message.reply_text("\n".join(lines).strip())lines.append("")  # порожній рядок між документами
+    # Видалити останній пустий рядок
+    text = "\n".join(lines).rstrip()
 
-await update.message.reply_text("\n".join(lines).strip())
+    await update.message.reply_text(text)
+
+
 # ============================================================
 # UPDATE DOCUMENT
 # ============================================================
