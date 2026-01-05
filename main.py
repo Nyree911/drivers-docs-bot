@@ -140,6 +140,30 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
     )
 
+def get_user_full_name(uid) -> str:
+    """Бере FULL_NAME з таблиці по TELEGRAM id."""
+    for r in sheet.get_all_records():
+        if str(r.get("TELEGRAM", "")) == str(uid):
+            name = (r.get("FULL_NAME") or "").strip()
+            return name if name else "Без імені"
+    return "Без імені"
+
+
+def tg_user_label(user) -> str:
+    """Формує читабельний підпис користувача."""
+    if not user:
+        return "Невідомий користувач"
+    uname = f"@{user.username}" if getattr(user, "username", None) else "без username"
+    full = user.full_name if getattr(user, "full_name", None) else "без імені"
+    return f"{full} ({uname})"
+
+
+async def notify_admin(context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Надсилає повідомлення адміну. Помилки не валять бота."""
+    try:
+        await context.bot.send_message(ADMIN_ID, text)
+    except Exception:
+        pass
 
 DOC_LABELS = {
     "TP": "ТЕХ ПАСПОРТ",
@@ -213,6 +237,14 @@ async def register_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("Реєстрацію завершено ✔")
     await update.message.reply_text("Головне меню:", reply_markup=main_menu_keyboard())
+        # --- ADMIN LOG ---
+    await notify_admin(
+        context,
+        "✅ Реєстрація/оновлення ПІБ\n"
+        f"👤 {tg_user_label(update.effective_user)}\n"
+        f"🆔 {uid}\n"
+        f"📛 FULL_NAME: {full}"
+    )
     return ConversationHandler.END
 
 
@@ -361,6 +393,17 @@ async def add_doc_date(update, context):
         context.user_data["doc_name"],
         text
     ])
+
+        # --- ADMIN LOG ---
+    await notify_admin(
+        context,
+        "➕ Додано документ\n"
+        f"👤 {tg_user_label(update.effective_user)}\n"
+        f"🆔 {uid}\n"
+        f"🚘 {context.user_data.get('vehicle_type')} | {context.user_data.get('plate')}\n"
+        f"📄 {context.user_data.get('doc_name')}\n"
+        f"📅 {text}"
+    )
 
     await update.message.reply_text(
         "Документ додано ✔",
@@ -549,13 +592,34 @@ async def update_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.message.chat_id
     rows = sheet.get_all_records()
 
+        uid = update.message.chat_id
+    rows = sheet.get_all_records()
+
+    old_date = None
+    updated = False
+
     for i, r in enumerate(rows, start=2):
         if (
             str(r["TELEGRAM"]) == str(uid)
             and r["PLATE"] == context.user_data.get("plate")
             and r["DOC_NAME"] == context.user_data.get("doc")
         ):
+            old_date = r.get("DATE")
             sheet.update_cell(i, 6, text)
+            updated = True
+            break
+
+        # --- ADMIN LOG ---
+    await notify_admin(
+        context,
+        "✏️ Оновлено документ\n"
+        f"👤 {tg_user_label(update.effective_user)}\n"
+        f"🆔 {uid}\n"
+        f"🚘 {context.user_data.get('plate')}\n"
+        f"📄 {context.user_data.get('doc')}\n"
+        f"📅 було: {old_date} → стало: {text}\n"
+        f"✅ {'так' if updated else 'ні (не знайдено рядок)'}"
+    )
 
     # Повертаємося в головне меню
     await update.message.reply_text(
@@ -609,6 +673,9 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
 
     rows = sheet.get_all_records()
+        rows = sheet.get_all_records()
+    deleted = False
+
     for i, r in enumerate(rows, start=2):
         if (
             r["PLATE"] == plate
@@ -616,12 +683,24 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
             and str(r["TELEGRAM"]) == str(uid)
         ):
             sheet.delete_rows(i)
+            deleted = True
             break
 
     await q.edit_message_text("Документ видалено ✔")
 
     await q.message.reply_text(
         "Головне меню:", reply_markup=main_menu_keyboard()
+    )
+
+        # --- ADMIN LOG ---
+    await notify_admin(
+        context,
+        "🗑 Видалено документ\n"
+        f"👤 {tg_user_label(q.from_user)}\n"
+        f"🆔 {uid}\n"
+        f"🚘 {plate}\n"
+        f"📄 {doc}\n"
+        f"✅ {'так' if deleted else 'ні (не знайдено рядок)'}"
     )
     return ConversationHandler.END
 
