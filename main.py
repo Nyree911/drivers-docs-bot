@@ -668,9 +668,7 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     plate, doc = q.data.split("|")
     uid = q.from_user.id
-
     rows = sheet.get_all_records()
-        rows = sheet.get_all_records()
     deleted = False
 
     for i, r in enumerate(rows, start=2):
