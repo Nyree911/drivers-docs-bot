@@ -592,9 +592,6 @@ async def update_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.message.chat_id
     rows = sheet.get_all_records()
 
-        uid = update.message.chat_id
-    rows = sheet.get_all_records()
-
     old_date = None
     updated = False
 
