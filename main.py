@@ -32,7 +32,9 @@ from oauth2client.service_account import ServiceAccountCredentials
 # CONFIG
 # ============================================================
 
-TOKEN = "8428053990:AAF5GvsOr6JNgtZdqNyKOFDW1iBDZs3ygW4"      
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise RuntimeError("❌ BOT_TOKEN is missing. Set it in Railway Variables.") 
 ADMIN_ID = 433247695
 
 SPREAD_NAME = "Документи водіїв"
