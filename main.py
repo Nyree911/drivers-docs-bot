@@ -373,45 +373,55 @@ async def add_doc_date(update, context):
 
     # додаємо у таблицю
     uid = update.message.chat_id
+    plate = context.user_data["plate"]
+    doc_name = context.user_data["doc_name"]
+    vehicle_type = context.user_data["vehicle_type"]
+
     rows = sheet.get_all_records()
+
+    # знаходимо ПІБ користувача (як було)
     user_rows = [r for r in rows if str(r["TELEGRAM"]) == str(uid)]
-
     if not user_rows:
-        await update.message.reply_text(
-            "❗ Вас не знайдено у таблиці. Натисніть /start.",
-            reply_markup=main_menu_keyboard()
-        )
+        await update.message.reply_text("❗ Вас не знайдено у таблиці. Натисніть /start.",
+                                        reply_markup=main_menu_keyboard())
         return ConversationHandler.END
-
     full_name = user_rows[0]["FULL_NAME"]
 
-    sheet.append_row([
-        full_name,
-        str(uid),
-        context.user_data["vehicle_type"],
-        context.user_data["plate"],
-        context.user_data["doc_name"],
-        text
-    ])
+    # 1) шукаємо існуючий рядок для (uid + plate + doc_name)
+    found_row_index = None
+    old_date = None
 
-        # --- ADMIN LOG ---
+    for i, r in enumerate(rows, start=2):  # start=2 бо 1-й рядок — заголовки
+        if (
+            str(r.get("TELEGRAM")) == str(uid)
+            and (r.get("PLATE") or "").strip().upper() == plate
+            and (r.get("DOC_NAME") or "").strip().upper() == doc_name.strip().upper()
+        ):
+            found_row_index = i
+            old_date = r.get("DATE")
+            break
+
+    # 2) якщо знайшли — оновлюємо, якщо ні — додаємо новий
+    if found_row_index:
+        sheet.update_cell(found_row_index, 3, vehicle_type)  # TYPE
+        sheet.update_cell(found_row_index, 6, text)          # DATE
+        action = f"♻️ Перезаписано (було {old_date} → стало {text})"
+    else:
+        sheet.append_row([full_name, str(uid), vehicle_type, plate, doc_name, text])
+        action = "➕ Додано новий"
+
     await notify_admin(
         context,
-        "➕ Додано документ\n"
+        f"{action}\n"
         f"👤 {tg_user_label(update.effective_user)}\n"
         f"🆔 {uid}\n"
-        f"🚘 {context.user_data.get('vehicle_type')} | {context.user_data.get('plate')}\n"
-        f"📄 {context.user_data.get('doc_name')}\n"
+        f"🚘 {vehicle_type} | {plate}\n"
+        f"📄 {doc_name}\n"
         f"📅 {text}"
     )
 
-    await update.message.reply_text(
-        "Документ додано ✔",
-        reply_markup=main_menu_keyboard()
-    )
-
+    await update.message.reply_text("Готово ✔", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
-
 # ============================================================
 # MY VEHICLES
 # ============================================================
@@ -606,7 +616,7 @@ async def update_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
             updated = True
             break
 
-        # --- ADMIN LOG ---
+    # --- ADMIN LOG ---
     await notify_admin(
         context,
         "✏️ Оновлено документ\n"
