@@ -4,7 +4,7 @@ import os
 import json
 import re
 import requests
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import logging
 
@@ -882,22 +882,12 @@ async def queue_watch_select_checkpoint(update: Update, context: ContextTypes.DE
 
 
 async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("queue_mode") != "enter_target_datetime":
-        return
-
     text = update.message.text.strip()
 
     if text == "🔙 СКАСУВАТИ":
-        context.user_data.pop("queue_mode", None)
-        context.user_data.pop("queue_checkpoint_code", None)
-        context.user_data.pop("queue_checkpoint_name", None)
+        return await cancel(update, context)
 
-        await update.message.reply_text(
-            "Дію скасовано. Повертаюсь у головне меню.",
-            reply_markup=main_menu_keyboard(),
-        )
-        return
-
+    # ✅ парсимо дату
     try:
         target_dt = datetime.strptime(text, "%d.%m.%Y %H:%M").replace(
             tzinfo=ZoneInfo("Europe/Kyiv")
@@ -907,30 +897,40 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❗ Неправильний формат. Введіть так: 25.05.2026 14:00",
             reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
         )
-        return
+        return QUEUE_ENTER_TARGET_DATETIME
 
-    if target_dt <= datetime.now(ZoneInfo("Europe/Kyiv")):
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+
+    # ❗ перевірка: не в минулому
+    if target_dt <= now:
         await update.message.reply_text(
             "❗ Ця дата/час вже в минулому. Введіть майбутній час.",
             reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
         )
-        return
+        return QUEUE_ENTER_TARGET_DATETIME
 
+    # ❗ обмеження: максимум 10 днів
+    max_dt = now + timedelta(days=10)
+
+    if target_dt > max_dt:
+        await update.message.reply_text(
+            "❗ Можна обрати дату не більше ніж на 10 днів вперед.",
+            reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
+        )
+        return QUEUE_ENTER_TARGET_DATETIME
+
+    # ✅ збереження
     uid = update.message.chat_id
     full_name = get_user_full_name(uid)
-    checkpoint = context.user_data.get("queue_checkpoint_name")
+    checkpoint = context.user_data["queue_checkpoint_name"]
 
     upsert_queue_watch(uid, full_name, checkpoint, text)
-
-    context.user_data.pop("queue_mode", None)
-    context.user_data.pop("queue_checkpoint_code", None)
-    context.user_data.pop("queue_checkpoint_name", None)
 
     await update.message.reply_text(
         f"Заявку збережено ✔\n\n"
         f"Пункт пропуску: {checkpoint}\n"
         f"Бажаний перетин: {text}\n\n"
-        f"Коли настане час, бот почне нагадувати.",
+        f"Бот почне сповіщати, коли буде час ставати в чергу.",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -942,6 +942,8 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📍 {checkpoint}\n"
         f"🕒 {text}"
     )
+
+    return ConversationHandler.END
 
 
 
