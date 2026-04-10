@@ -394,8 +394,14 @@ async def add_doc_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel(update, context)
 
     context.user_data["vehicle_type"] = q.data
-    await q.edit_message_text(
-        "Введіть номер (AA1234BB) або натисніть 🔙 СКАСУВАТИ:"
+    await q.edit_message_text("Оберіть тип транспорту")
+
+    await q.message.reply_text(
+        "Введіть номер (AA1234BB) або натисніть 🔙 СКАСУВАТИ:",
+        reply_markup=ReplyKeyboardMarkup(
+            [["🔙 СКАСУВАТИ"]],
+            resize_keyboard=True,
+        ),
     )
     return ADD_ENTER_PLATE
 
