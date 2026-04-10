@@ -924,8 +924,8 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [
         [InlineKeyboardButton("🚚 Додати поріг по машинах", callback_data="QUEUE_VEHICLES_YES")],
         [InlineKeyboardButton("⏱ Тільки по часу", callback_data="QUEUE_VEHICLES_NO")],
-        [InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")],
-]
+        [InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="QUEUE_VEHICLES_CANCEL")],
+    ]
 
     await update.message.reply_text(
         "Хочете додати ще поріг по кількості машин у черзі?",
@@ -939,8 +939,17 @@ async def queue_watch_choose_vehicles(update: Update, context: ContextTypes.DEFA
     q = update.callback_query
     await q.answer()
 
-    if q.data == "CANCEL":
-        return await cancel(update, context)
+    if q.data == "QUEUE_VEHICLES_CANCEL":
+        context.user_data.pop("queue_target_datetime", None)
+        context.user_data.pop("queue_checkpoint_code", None)
+        context.user_data.pop("queue_checkpoint_name", None)
+
+        await q.edit_message_text("Дію скасовано.")
+        await q.message.reply_text(
+            "Повертаюсь у головне меню.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return ConversationHandler.END
 
     if q.data == "QUEUE_VEHICLES_NO":
         uid = q.from_user.id
@@ -979,6 +988,8 @@ async def queue_watch_choose_vehicles(update: Update, context: ContextTypes.DEFA
             reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
         )
         return QUEUE_ENTER_TARGET_VEHICLES
+
+    return QUEUE_ASK_VEHICLES
 
 
 async def queue_watch_save_vehicles(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1492,12 +1503,17 @@ def main():
                     MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save)
                 ],
                 QUEUE_ASK_VEHICLES: [
-                    CallbackQueryHandler(queue_watch_choose_vehicles, pattern="^(QUEUE_VEHICLES_YES|QUEUE_VEHICLES_NO|CANCEL)$")
+                    CallbackQueryHandler(
+                        queue_watch_choose_vehicles,
+                        pattern=r"^(QUEUE_VEHICLES_YES|QUEUE_VEHICLES_NO|QUEUE_VEHICLES_CANCEL)$"
+                    )
                 ],
                 QUEUE_ENTER_TARGET_VEHICLES: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save_vehicles)
                 ],
             },
+
+            
             fallbacks=[CommandHandler("start", start)],
         )
     )
