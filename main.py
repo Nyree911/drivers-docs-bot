@@ -1030,6 +1030,10 @@ async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
 async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
     active_rows = get_active_queue_rows()
+    print("QUEUE JOB START")
+    print("checkpoint:", checkpoint)
+    print("target_text:", target_text)
+    print("uid:", uid_raw)
 
     for row_index, r in active_rows:
         uid_raw = str(r.get("TELEGRAM", "")).strip()
@@ -1051,6 +1055,7 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
             continue
 
         queue_text = await fetch_checkpoint_queue_text(checkpoint)
+        print("queue_text:", queue_text)
 
         queue_sheet.update_cell(row_index, 7, queue_text or "")
         queue_sheet.update_cell(row_index, 8, now.strftime("%d.%m.%Y %H:%M"))
@@ -1064,6 +1069,8 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
             continue
 
         minutes_until_target = int((target_dt - now).total_seconds() // 60)
+        print("minutes_until_target:", minutes_until_target)
+        print("queue_minutes:", queue_minutes)
 
         if queue_minutes >= minutes_until_target:
             msg = (
