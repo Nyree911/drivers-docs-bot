@@ -992,7 +992,7 @@ async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
     Тут пізніше підключимо реальне джерело eCherha.
     Поки що заглушка.
     """
-    return "2 дні 2 години 25 хв"
+    return None
     
 async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
