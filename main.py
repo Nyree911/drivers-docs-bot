@@ -1004,6 +1004,82 @@ async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
     print("FETCH CALLED FOR:", checkpoint_name)
     return "2 дні 2 години 25 хв"
 
+async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    active_rows = get_active_queue_rows()
+
+    print("QUEUE JOB START")
+    print("active_rows:", len(active_rows))
+
+    for row_index, r in active_rows:
+        uid_raw = str(r.get("TELEGRAM", "")).strip()
+        checkpoint = str(r.get("CHECKPOINT", "")).strip()
+        target_text = str(r.get("TARGET_DATETIME", "")).strip()
+        alert_started = str(r.get("ALERT_STARTED", "")).upper() == "TRUE"
+
+        print("row_index:", row_index)
+        print("uid:", uid_raw)
+        print("checkpoint:", checkpoint)
+        print("target_text:", target_text)
+        print("alert_started:", alert_started)
+
+        if not uid_raw or not checkpoint or not target_text:
+            print("SKIP: empty fields")
+            continue
+
+        try:
+            uid = int(uid_raw)
+            target_dt = parse_target_datetime(target_text)
+        except Exception as e:
+            print("PARSE ERROR:", e)
+            continue
+
+        if now >= target_dt:
+            print("SKIP: target time already passed")
+            queue_sheet.update_cell(row_index, 5, "FALSE")  # IS_ACTIVE
+            continue
+
+        queue_text = await fetch_checkpoint_queue_text(checkpoint)
+        print("queue_text:", queue_text)
+
+        queue_sheet.update_cell(row_index, 7, queue_text or "")  # LAST_QUEUE_TEXT
+        queue_sheet.update_cell(row_index, 8, now.strftime("%d.%m.%Y %H:%M"))  # LAST_CHECK_AT
+
+        if not queue_text:
+            print("SKIP: no queue_text")
+            continue
+
+        try:
+            queue_minutes = parse_queue_duration_to_minutes(queue_text)
+        except Exception as e:
+            print("QUEUE PARSE ERROR:", e)
+            continue
+
+        minutes_until_target = int((target_dt - now).total_seconds() // 60)
+
+        print("queue_minutes:", queue_minutes)
+        print("minutes_until_target:", minutes_until_target)
+
+        if queue_minutes >= minutes_until_target:
+            print("ALERT: sending message")
+            msg = (
+                "🚨 ЧАС СТАВАТИ В ЧЕРГУ\n\n"
+                f"Пункт пропуску: {checkpoint}\n"
+                f"Бажаний перетин: {target_text}\n"
+                f"Поточна черга: {queue_text}\n\n"
+                "Натисни «⛔ ЗУПИНИТИ ЧЕРГУ», коли вже став у чергу."
+            )
+
+            try:
+                await context.bot.send_message(uid, msg)
+            except Exception as e:
+                print("SEND ERROR:", e)
+
+            if not alert_started:
+                queue_sheet.update_cell(row_index, 6, "TRUE")  # ALERT_STARTED
+        else:
+            print("NO ALERT YET")
+
 # ============================================================
 # POST_INIT (WEBHOOK REMOVE + JOB QUEUE)
 # ============================================================
@@ -1035,11 +1111,9 @@ async def post_init(app: Application):
     except Exception as e:
         print("[post_init] Job queue error:", e)
 
-    try:
-        app.create_task(
-            app.bot.send_message(
-                ADMIN_ID, "🔄 Бот перезавантажено і job_queue активний."
-            )
+        try:
+            await app.bot.send_message(
+            ADMIN_ID, "🔄 Бот перезавантажено і job_queue активний."
         )
         print("[post_init] Admin notified")
     except Exception as e:
