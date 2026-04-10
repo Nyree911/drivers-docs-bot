@@ -1445,8 +1445,12 @@ def main():
 
     app.add_handler(MessageHandler(filters.Regex("СТАТИ В ЧЕРГУ"), queue_watch_start))
     app.add_handler(CallbackQueryHandler(queue_watch_select_checkpoint, pattern=r"^(QUEUE_CP:|QUEUE_CANCEL)"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save))
-        # --- Simple handlers ---
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.Regex(r"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$|🔙 СКАСУВАТИ"),
+            queue_watch_save
+        )
+    )        # --- Simple handlers ---
     app.add_handler(MessageHandler(filters.Regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
     app.add_handler(MessageHandler(filters.Regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
     app.add_handler(MessageHandler(filters.Regex("⛔ ЗУПИНИТИ ЧЕРГУ"), queue_watch_stop))
