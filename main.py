@@ -841,8 +841,6 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 async def queue_watch_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["queue_mode"] = "select_checkpoint"
-
     kb = [[InlineKeyboardButton(v, callback_data=f"QUEUE_CP:{k}")] for k, v in CHECKPOINTS.items()]
     kb.append([InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="QUEUE_CANCEL")])
 
@@ -850,6 +848,7 @@ async def queue_watch_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Оберіть пункт пропуску:",
         reply_markup=InlineKeyboardMarkup(kb),
     )
+    return QUEUE_SELECT_CHECKPOINT
 
 
 async def queue_watch_select_checkpoint(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -857,23 +856,12 @@ async def queue_watch_select_checkpoint(update: Update, context: ContextTypes.DE
     await q.answer()
 
     if q.data == "QUEUE_CANCEL":
-        context.user_data.pop("queue_mode", None)
-        context.user_data.pop("queue_checkpoint_code", None)
-        context.user_data.pop("queue_checkpoint_name", None)
-
-        await q.edit_message_text("Дію скасовано.")
-        await q.message.reply_text(
-            "Повертаюсь у головне меню.",
-            reply_markup=main_menu_keyboard(),
-        )
-        return
+        return await cancel(update, context)
 
     if not q.data.startswith("QUEUE_CP:"):
-        return
+        return QUEUE_SELECT_CHECKPOINT
 
     code = q.data.split("QUEUE_CP:", 1)[1]
-
-    context.user_data["queue_mode"] = "enter_target_datetime"
     context.user_data["queue_checkpoint_code"] = code
     context.user_data["queue_checkpoint_name"] = CHECKPOINTS[code]
 
@@ -883,6 +871,7 @@ async def queue_watch_select_checkpoint(update: Update, context: ContextTypes.DE
         "Наприклад: 25.05.2026 14:00",
         reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
     )
+    return QUEUE_ENTER_TARGET_DATETIME
 
 
 async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -931,7 +920,6 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Хочете додати ще поріг по кількості машин у черзі?",
         reply_markup=InlineKeyboardMarkup(kb),
     )
-
     return QUEUE_ASK_VEHICLES
 
 
@@ -940,16 +928,7 @@ async def queue_watch_choose_vehicles(update: Update, context: ContextTypes.DEFA
     await q.answer()
 
     if q.data == "QUEUE_VEHICLES_CANCEL":
-        context.user_data.pop("queue_target_datetime", None)
-        context.user_data.pop("queue_checkpoint_code", None)
-        context.user_data.pop("queue_checkpoint_name", None)
-
-        await q.edit_message_text("Дію скасовано.")
-        await q.message.reply_text(
-            "Повертаюсь у головне меню.",
-            reply_markup=main_menu_keyboard(),
-        )
-        return ConversationHandler.END
+        return await cancel(update, context)
 
     if q.data == "QUEUE_VEHICLES_NO":
         uid = q.from_user.id
