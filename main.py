@@ -819,7 +819,9 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel(update, context)
 
     try:
-        target_dt = datetime.strptime(text, "%d.%m.%Y %H:%M").replace(tzinfo=ZoneInfo("Europe/Kyiv"))
+        target_dt = datetime.strptime(text, "%d.%m.%Y %H:%M").replace(
+    tzinfo=ZoneInfo("Europe/Kyiv")
+)
     except Exception:
         await update.message.reply_text(
             "❗ Неправильний формат. Введіть так: 25.05.2026 14:00",
@@ -949,7 +951,9 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 def parse_target_datetime(text: str) -> datetime:
-    return datetime.strptime(text.strip(), "%d.%m.%Y %H:%M")
+    return datetime.strptime(text.strip(), "%d.%m.%Y %H:%M").replace(
+        tzinfo=ZoneInfo("Europe/Kyiv")
+    )
 
 
 def parse_queue_duration_to_minutes(text: str) -> int:
