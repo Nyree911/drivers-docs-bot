@@ -1075,7 +1075,7 @@ async def post_init(app: Application):
             first=10,       # перший запуск через 10 секунд
         )
 
-         app.job_queue.run_repeating(
+        app.job_queue.run_repeating(
             queue_watch_job,
             interval=300,
             first=20,
