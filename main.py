@@ -999,10 +999,68 @@ def get_active_queue_rows():
         if str(r.get("IS_ACTIVE", "")).upper() == "TRUE":
             result.append((i, r))
     return result
-
 async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
-    print("FETCH CALLED FOR:", checkpoint_name)
-    return "2 дні 2 години 25 хв"
+    url = "https://back.echerha.gov.ua/api/v4/workload/1"
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Origin": "https://echerha.gov.ua",
+        "Referer": "https://echerha.gov.ua/",
+        "x-client-locale": "uk",
+        "x-user-agent": "UABorder/3.5.0 Web/1.1.0 User/guest",
+        "User-Agent": "Mozilla/5.0",
+    }
+
+    title_map = {
+        "Краківець – Корчова": "Краківець – Корчова (для вантажівок ≥ 7,5 тонн)",
+        "Рава-Руська – Хребенне": "Рава-Руська – Хребенне (для вантажівок ≥ 7,5 тонн)",
+        "Шегині – Медика": "Шегині – Медика (для вантажівок ≥ 7,5 тонн)",
+        "Ягодин – Дорогуськ": "Ягодин – Дорогуськ (для вантажівок ≥ 7,5 тонн)",
+    }
+
+    target_title = title_map.get(checkpoint_name)
+    if not target_title:
+        print("FETCH ERROR: unknown checkpoint_name:", checkpoint_name)
+        return None
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=20)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as e:
+        print("FETCH ERROR: request failed:", e)
+        return None
+
+    items = payload.get("data", [])
+    for item in items:
+        title = (item.get("title") or "").strip()
+
+        if title != target_title:
+            continue
+
+        #wait_minutes = int(item.get("wait_time") or 0)
+        wait_minutes = 3000
+
+        days = wait_minutes // (24 * 60)
+        hours = (wait_minutes % (24 * 60)) // 60
+        minutes = wait_minutes % 60
+
+        parts = []
+        if days:
+            parts.append(f"{days} дні" if days not in {1} else f"{days} день")
+        if hours:
+            parts.append(f"{hours} години" if hours not in {1} else f"{hours} година")
+        if minutes or not parts:
+            parts.append(f"{minutes} хв")
+
+        queue_text = " ".join(parts)
+
+        print("FETCH OK:", checkpoint_name, "|", wait_minutes, "min |", queue_text)
+        return queue_text
+
+    print("FETCH ERROR: checkpoint not found:", checkpoint_name)
+    return None
 
 async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
