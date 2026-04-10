@@ -925,7 +925,7 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🚚 Додати поріг по машинах", callback_data="QUEUE_VEHICLES_YES")],
         [InlineKeyboardButton("⏱ Тільки по часу", callback_data="QUEUE_VEHICLES_NO")],
         [InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")],
-    ]
+]
 
     await update.message.reply_text(
         "Хочете додати ще поріг по кількості машин у черзі?",
@@ -973,9 +973,9 @@ async def queue_watch_choose_vehicles(update: Update, context: ContextTypes.DEFA
         return ConversationHandler.END
 
     if q.data == "QUEUE_VEHICLES_YES":
-        await q.edit_message_text("Введіть поріг по машинах, наприклад: 20")
+        await q.edit_message_text("Обрано: додати поріг по машинах.")
         await q.message.reply_text(
-            "Скільки машин у черзі має бути, щоб теж спрацювало сповіщення?",
+            "Введіть кількість машин, наприклад: 20",
             reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
         )
         return QUEUE_ENTER_TARGET_VEHICLES
@@ -1485,22 +1485,17 @@ def main():
                 MessageHandler(filters.Regex("➕ ДОДАТИ ДОКУМЕНТ"), add_doc_start)
             ],
             states={
-                ADD_SELECT_TYPE: [CallbackQueryHandler(add_doc_type)],
-                ADD_ENTER_PLATE: [
-                    MessageHandler(
-                        filters.TEXT & ~filters.COMMAND, add_doc_plate
-                    ),
+                QUEUE_SELECT_CHECKPOINT: [
+                    CallbackQueryHandler(queue_watch_select_checkpoint)
                 ],
-                ADD_SELECT_DOC: [CallbackQueryHandler(add_doc_name)],
-                ADD_ENTER_CUSTOM_DOC: [
-                    MessageHandler(
-                        filters.TEXT & ~filters.COMMAND, add_custom_doc
-                    )
+                QUEUE_ENTER_TARGET_DATETIME: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save)
                 ],
-                ADD_ENTER_DATE: [
-                    MessageHandler(
-                        filters.TEXT & ~filters.COMMAND, add_doc_date
-                    )
+                QUEUE_ASK_VEHICLES: [
+                    CallbackQueryHandler(queue_watch_choose_vehicles, pattern="^(QUEUE_VEHICLES_YES|QUEUE_VEHICLES_NO|CANCEL)$")
+                ],
+                QUEUE_ENTER_TARGET_VEHICLES: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save_vehicles)
                 ],
             },
             fallbacks=[CommandHandler("start", start)],
