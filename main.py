@@ -1400,10 +1400,10 @@ def main():
 
 
         # --- Queue watch ---
-    app.add_handler(
+        app.add_handler(
         ConversationHandler(
             entry_points=[
-                MessageHandler(filters.Regex("🛃 ХОЧУ СТАТИ В ЧЕРГУ"), queue_watch_start)
+                MessageHandler(filters.Regex("СТАТИ В ЧЕРГУ"), queue_watch_start)
             ],
             states={
                 QUEUE_SELECT_CHECKPOINT: [CallbackQueryHandler(queue_watch_select_checkpoint)],
