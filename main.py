@@ -6,6 +6,12 @@ import re
 import requests
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram").setLevel(logging.INFO)
 
 # Telegram #
 from telegram import (
