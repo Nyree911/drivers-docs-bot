@@ -837,74 +837,100 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 async def queue_watch_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = [[InlineKeyboardButton(v, callback_data=k)] for k, v in CHECKPOINTS.items()]
-    kb.append([InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")])
+    context.user_data["queue_mode"] = "select_checkpoint"
+
+    kb = [[InlineKeyboardButton(v, callback_data=f"QUEUE_CP:{k}")] for k, v in CHECKPOINTS.items()]
+    kb.append([InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="QUEUE_CANCEL")])
 
     await update.message.reply_text(
         "Оберіть пункт пропуску:",
         reply_markup=InlineKeyboardMarkup(kb),
     )
-    return QUEUE_SELECT_CHECKPOINT
 
 
 async def queue_watch_select_checkpoint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
-    if q.data == "CANCEL":
-        return await cancel(update, context)
+    if q.data == "QUEUE_CANCEL":
+        context.user_data.pop("queue_mode", None)
+        context.user_data.pop("queue_checkpoint_code", None)
+        context.user_data.pop("queue_checkpoint_name", None)
 
-    context.user_data["queue_checkpoint_code"] = q.data
-    context.user_data["queue_checkpoint_name"] = CHECKPOINTS[q.data]
+        await q.edit_message_text("Дію скасовано.")
+        await q.message.reply_text(
+            "Повертаюсь у головне меню.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
 
-    await q.edit_message_text(
-        f"Обрано: {CHECKPOINTS[q.data]}"
-    )
+    if not q.data.startswith("QUEUE_CP:"):
+        return
 
+    code = q.data.split("QUEUE_CP:", 1)[1]
+
+    context.user_data["queue_mode"] = "enter_target_datetime"
+    context.user_data["queue_checkpoint_code"] = code
+    context.user_data["queue_checkpoint_name"] = CHECKPOINTS[code]
+
+    await q.edit_message_text(f"Обрано: {CHECKPOINTS[code]}")
     await q.message.reply_text(
         "Введіть бажаний час перетину у форматі ДД.ММ.РРРР ГГ:ХХ\n"
         "Наприклад: 25.05.2026 14:00",
         reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
     )
-    return QUEUE_ENTER_TARGET_DATETIME
 
 
 async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("queue_mode") != "enter_target_datetime":
+        return
+
     text = update.message.text.strip()
 
     if text == "🔙 СКАСУВАТИ":
-        return await cancel(update, context)
+        context.user_data.pop("queue_mode", None)
+        context.user_data.pop("queue_checkpoint_code", None)
+        context.user_data.pop("queue_checkpoint_name", None)
+
+        await update.message.reply_text(
+            "Дію скасовано. Повертаюсь у головне меню.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
 
     try:
         target_dt = datetime.strptime(text, "%d.%m.%Y %H:%M").replace(
-    tzinfo=ZoneInfo("Europe/Kyiv")
-)
+            tzinfo=ZoneInfo("Europe/Kyiv")
+        )
     except Exception:
         await update.message.reply_text(
             "❗ Неправильний формат. Введіть так: 25.05.2026 14:00",
             reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
         )
-        return QUEUE_ENTER_TARGET_DATETIME
+        return
 
     if target_dt <= datetime.now(ZoneInfo("Europe/Kyiv")):
         await update.message.reply_text(
             "❗ Ця дата/час вже в минулому. Введіть майбутній час.",
             reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
         )
-        return QUEUE_ENTER_TARGET_DATETIME
+        return
 
     uid = update.message.chat_id
     full_name = get_user_full_name(uid)
-    checkpoint = context.user_data["queue_checkpoint_name"]
+    checkpoint = context.user_data.get("queue_checkpoint_name")
 
     upsert_queue_watch(uid, full_name, checkpoint, text)
+
+    context.user_data.pop("queue_mode", None)
+    context.user_data.pop("queue_checkpoint_code", None)
+    context.user_data.pop("queue_checkpoint_name", None)
 
     await update.message.reply_text(
         f"Заявку збережено ✔\n\n"
         f"Пункт пропуску: {checkpoint}\n"
         f"Бажаний перетин: {text}\n\n"
-        f"Коли черга стане більшою або рівною часу, що лишився до перетину, "
-        f"бот почне нагадаувати що настав час перетину кордону.",
+        f"Коли настане час, бот почне нагадувати.",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -917,7 +943,6 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🕒 {text}"
     )
 
-    return ConversationHandler.END
 
 
 async def queue_watch_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1338,20 +1363,7 @@ def main():
     # Глушимо службові оновлення (join/left, pinned і т.д.)
     app.add_handler(MessageHandler(filters.StatusUpdate.ALL, lambda u, c: None))
 
-    # --- Registration (/start) ---
-    app.add_handler(
-        ConversationHandler(
-            entry_points=[CommandHandler("start", start)],
-            states={
-                REG_ENTER_NAME: [
-                    MessageHandler(
-                        filters.TEXT & ~filters.COMMAND, register_save
-                    ),
-                ],
-            },
-            fallbacks=[CommandHandler("start", start)],
-        )
-    )
+
 
     # --- Add document ---
     app.add_handler(
@@ -1429,7 +1441,11 @@ def main():
             fallbacks=[CommandHandler("start", start)],
         )
     )
-    
+
+
+    app.add_handler(MessageHandler(filters.Regex("СТАТИ В ЧЕРГУ"), queue_watch_start))
+    app.add_handler(CallbackQueryHandler(queue_watch_select_checkpoint, pattern=r"^(QUEUE_CP:|QUEUE_CANCEL)"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save))
         # --- Simple handlers ---
     app.add_handler(MessageHandler(filters.Regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
     app.add_handler(MessageHandler(filters.Regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
