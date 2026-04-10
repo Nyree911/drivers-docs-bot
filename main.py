@@ -895,7 +895,7 @@ REMINDER_DAYS = {30, 25, 20, 14, 7, 3, 2, 1, 0}
 
 
 async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
     print(f"[reminders_job] Fired at {now}")
     app = context.application
 
