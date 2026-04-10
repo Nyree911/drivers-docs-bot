@@ -1063,80 +1063,49 @@ async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
     return None
 
 async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
+    print("QUEUE JOB START")
+
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
     active_rows = get_active_queue_rows()
 
-    print("QUEUE JOB START")
     print("active_rows:", len(active_rows))
 
     for row_index, r in active_rows:
-        uid_raw = str(r.get("TELEGRAM", "")).strip()
-        checkpoint = str(r.get("CHECKPOINT", "")).strip()
-        target_text = str(r.get("TARGET_DATETIME", "")).strip()
-        alert_started = str(r.get("ALERT_STARTED", "")).upper() == "TRUE"
-
-        print("row_index:", row_index)
-        print("uid:", uid_raw)
-        print("checkpoint:", checkpoint)
-        print("target_text:", target_text)
-        print("alert_started:", alert_started)
-
-        if not uid_raw or not checkpoint or not target_text:
-            print("SKIP: empty fields")
-            continue
-
         try:
-            uid = int(uid_raw)
-            target_dt = parse_target_datetime(target_text)
-        except Exception as e:
-            print("PARSE ERROR:", e)
-            continue
+            checkpoint_name = r.get("CHECKPOINT")
 
-        if now >= target_dt:
-            print("SKIP: target time already passed")
-            queue_sheet.update_cell(row_index, 5, "FALSE")  # IS_ACTIVE
-            continue
+            uid = int(r["TELEGRAM"])
+            target_dt = parse_target_datetime(r["TARGET_DATETIME"])
 
-        queue_text = await fetch_checkpoint_queue_text(checkpoint)
-        print("queue_text:", queue_text)
+            minutes_until_target = int((target_dt - now).total_seconds() / 60)
 
-        queue_sheet.update_cell(row_index, 7, queue_text or "")  # LAST_QUEUE_TEXT
-        queue_sheet.update_cell(row_index, 8, now.strftime("%d.%m.%Y %H:%M"))  # LAST_CHECK_AT
+            queue_text = await fetch_checkpoint_queue_text(checkpoint_name)
 
-        if not queue_text:
-            print("SKIP: no queue_text")
-            continue
+            if not queue_text:
+                continue
 
-        try:
             queue_minutes = parse_queue_duration_to_minutes(queue_text)
+
+            print("queue_minutes:", queue_minutes)
+            print("minutes_until_target:", minutes_until_target)
+
+            # ✅ УМОВА ЗА 30 ХВ
+            if queue_minutes >= max(minutes_until_target - 30, 0):
+
+                print("ALERT: sending message")
+
+                text = (
+                    f"🚨 ЧАС СТАВАТИ В ЧЕРГУ\n\n"
+                    f"Пункт пропуску: {checkpoint_name}\n"
+                    f"До бажаного часу залишилось ≈ 30 хв\n"
+                    f"Поточна черга: {queue_text}\n\n"
+                    f"Натисни «⛔ ЗУПИНИТИ ЧЕРГУ», коли вже став."
+                )
+
+                await context.bot.send_message(uid, text)
+
         except Exception as e:
-            print("QUEUE PARSE ERROR:", e)
-            continue
-
-        minutes_until_target = int((target_dt - now).total_seconds() // 60)
-
-        print("queue_minutes:", queue_minutes)
-        print("minutes_until_target:", minutes_until_target)
-
-        if queue_minutes >= max(minutes_until_target - 30, 0):
-            print("ALERT: sending message")
-            msg = (
-                f"🚨 ЧАС СТАВАТИ В ЧЕРГУ\n\n"
-                f"Пункт пропуску: {checkpoint_name}\n"
-                f"До бажаного часу залишилось ≈ 30 хв\n"
-                f"Поточна черга: {queue_text}\n\n"
-                f"Натисни «⛔ ЗУПИНИТИ ЧЕРГУ», коли вже став."
-            )
-
-            try:
-                await context.bot.send_message(uid, msg)
-            except Exception as e:
-                print("SEND ERROR:", e)
-
-            if not alert_started:
-                queue_sheet.update_cell(row_index, 6, "TRUE")  # ALERT_STARTED
-        else:
-            print("NO ALERT YET")
+            print("QUEUE JOB ERROR:", e)
 
 # ============================================================
 # POST_INIT (WEBHOOK REMOVE + JOB QUEUE)
