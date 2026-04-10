@@ -3,6 +3,7 @@ import logging
 import os
 import json
 import re
+import requests
 from datetime import datetime, date
 
 # Telegram #
@@ -883,27 +884,6 @@ async def queue_watch_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-############
-
-import requests
-
-async def debug_echerha_page():
-    url = "https://echerha.gov.ua/workload/1/1"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    try:
-        resp = requests.get(url, headers=headers, timeout=20)
-        print("DEBUG ECHERHA STATUS:", resp.status_code)
-        print("DEBUG ECHERHA URL:", resp.url)
-        print("DEBUG ECHERHA HTML START:")
-        print(resp.text[:3000])
-        print("DEBUG ECHERHA HTML END")
-    except Exception as e:
-        print("DEBUG ECHERHA ERROR:", e)
-
-##########
 
 
 # ============================================================
@@ -1009,15 +989,27 @@ def get_active_queue_rows():
     return result
 
 
-async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
-    """
-    ПОКИ ЩО ЗАГЛУШКА.
-    Тут пізніше підключимо реальне читання з eCherha.
-    Повернути треба рядок типу:
-    '2 дні 2 години 25 хв'
-    """
-    return None
 
+
+async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
+    url = "https://echerha.gov.ua/api/v1/workload"
+
+    try:
+        resp = requests.get(url, timeout=20)
+        data = resp.json()
+    except Exception as e:
+        print("ECHERHA API ERROR:", e)
+        return None
+
+    # тут треба знайти потрібний пункт
+    for item in data:
+        name = item.get("name", "").strip()
+
+        if checkpoint_name in name:
+            wait = item.get("waitTimeText")  # типу "2 дні 2 години 25 хв"
+            return wait
+
+    return None
 
 async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
@@ -1106,8 +1098,6 @@ async def post_init(app: Application):
         )
 
         print("[post_init] Job queue started")
-
-        await debug_echerha_page() 
         
     except Exception as e:
         print("[post_init] Job queue error:", e)
