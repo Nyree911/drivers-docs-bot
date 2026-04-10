@@ -1084,6 +1084,7 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
 # POST_INIT (WEBHOOK REMOVE + JOB QUEUE)
 # ============================================================
 
+
 async def post_init(app: Application):
     print("[post_init] Running…")
 
@@ -1096,8 +1097,8 @@ async def post_init(app: Application):
     try:
         app.job_queue.run_repeating(
             reminders_job,
-            interval=10800,  # що 3 години/
-            first=10,       # перший запуск через 10 секунд
+            interval=10800,  # що 3 години
+            first=10,        # перший запуск через 10 секунд
         )
 
         app.job_queue.run_repeating(
@@ -1107,12 +1108,11 @@ async def post_init(app: Application):
         )
 
         print("[post_init] Job queue started")
-        
     except Exception as e:
         print("[post_init] Job queue error:", e)
 
-        try:
-            await app.bot.send_message(
+    try:
+        await app.bot.send_message(
             ADMIN_ID, "🔄 Бот перезавантажено і job_queue активний."
         )
         print("[post_init] Admin notified")
