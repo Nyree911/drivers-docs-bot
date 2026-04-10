@@ -882,6 +882,30 @@ async def queue_watch_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+
+############
+
+import requests
+
+async def debug_echerha_page():
+    url = "https://echerha.gov.ua/workload/1/1"
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=20)
+        print("DEBUG ECHERHA STATUS:", resp.status_code)
+        print("DEBUG ECHERHA URL:", resp.url)
+        print("DEBUG ECHERHA HTML START:")
+        print(resp.text[:3000])
+        print("DEBUG ECHERHA HTML END")
+    except Exception as e:
+        print("DEBUG ECHERHA ERROR:", e)
+
+##########
+
+
 # ============================================================
 # REMINDERS
 # ============================================================
@@ -1082,6 +1106,9 @@ async def post_init(app: Application):
         )
 
         print("[post_init] Job queue started")
+
+        await debug_echerha_page() 
+        
     except Exception as e:
         print("[post_init] Job queue error:", e)
 
