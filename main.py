@@ -904,7 +904,7 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Пункт пропуску: {checkpoint}\n"
         f"Бажаний перетин: {text}\n\n"
         f"Коли черга стане більшою або рівною часу, що лишився до перетину, "
-        f"бот почне писати кожні 5 хвилин.",
+        f"бот почне нагадаувати що настав час перетину кордону.",
         reply_markup=main_menu_keyboard(),
     )
 
