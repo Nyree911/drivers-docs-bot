@@ -1028,7 +1028,7 @@ async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
         return None
     
 async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
-    hour = datetime.now(ZoneInfo("Europe/Kyiv")).hour
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
     active_rows = get_active_queue_rows()
 
     for row_index, r in active_rows:
@@ -1046,17 +1046,14 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             continue
 
-        # якщо час уже минув — просто вимикаємо заявку
         if now >= target_dt:
-            queue_sheet.update_cell(row_index, 5, "FALSE")  # IS_ACTIVE
+            queue_sheet.update_cell(row_index, 5, "FALSE")
             continue
 
-        # читаємо поточну чергу
         queue_text = await fetch_checkpoint_queue_text(checkpoint)
 
-        # оновлюємо службові поля навіть якщо поки нема даних
-        queue_sheet.update_cell(row_index, 7, queue_text or "")  # LAST_QUEUE_TEXT
-        queue_sheet.update_cell(row_index, 8, now.strftime("%d.%m.%Y %H:%M"))  # LAST_CHECK_AT
+        queue_sheet.update_cell(row_index, 7, queue_text or "")
+        queue_sheet.update_cell(row_index, 8, now.strftime("%d.%m.%Y %H:%M"))
 
         if not queue_text:
             continue
@@ -1083,8 +1080,7 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
                 pass
 
             if not alert_started:
-                queue_sheet.update_cell(row_index, 6, "TRUE")  # ALERT_STARTED
-
+                queue_sheet.update_cell(row_index, 6, "TRUE")
 
 
 # ============================================================
