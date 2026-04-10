@@ -1118,14 +1118,14 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
         print("queue_minutes:", queue_minutes)
         print("minutes_until_target:", minutes_until_target)
 
-        if queue_minutes >= minutes_until_target:
+        if queue_minutes >= max(minutes_until_target - 30, 0):
             print("ALERT: sending message")
             msg = (
-                "🚨 ЧАС СТАВАТИ В ЧЕРГУ\n\n"
-                f"Пункт пропуску: {checkpoint}\n"
-                f"Бажаний перетин: {target_text}\n"
+                f"🚨 ЧАС СТАВАТИ В ЧЕРГУ\n\n"
+                f"Пункт пропуску: {checkpoint_name}\n"
+                f"До бажаного часу залишилось ≈ 30 хв\n"
                 f"Поточна черга: {queue_text}\n\n"
-                "Натисни «⛔ ЗУПИНИТИ ЧЕРГУ», коли вже став у чергу."
+                f"Натисни «⛔ ЗУПИНИТИ ЧЕРГУ», коли вже став."
             )
 
             try:
