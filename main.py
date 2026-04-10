@@ -66,6 +66,24 @@ else:
 client = gspread.authorize(creds)
 sheet = client.open(SPREAD_NAME).worksheet(SHEET_NAME)
 
+QUEUE_SHEET_NAME = "QueueWatch"
+queue_sheet = client.open(SPREAD_NAME).worksheet(QUEUE_SHEET_NAME)
+
+QUEUE_REQUIRED_COLUMNS = [
+    "TELEGRAM",
+    "FULL_NAME",
+    "CHECKPOINT",
+    "TARGET_DATETIME",
+    "IS_ACTIVE",
+    "ALERT_STARTED",
+    "LAST_QUEUE_TEXT",
+    "LAST_CHECK_AT",
+]
+
+if queue_sheet.row_values(1) != QUEUE_REQUIRED_COLUMNS:
+    queue_sheet.delete_rows(1)
+    queue_sheet.insert_row(QUEUE_REQUIRED_COLUMNS, 1)
+
 REQUIRED_COLUMNS = ["FULL_NAME", "TELEGRAM", "TYPE", "PLATE", "DOC_NAME", "DATE"]
 if sheet.row_values(1) != REQUIRED_COLUMNS:
     sheet.delete_rows(1)
@@ -86,7 +104,9 @@ if sheet.row_values(1) != REQUIRED_COLUMNS:
     UPDATE_SELECT_DOC,
     UPDATE_ENTER_DATE,
     DELETE_SELECT_DOC,
-) = range(9)
+    QUEUE_SELECT_CHECKPOINT,
+    QUEUE_ENTER_TARGET_DATETIME,
+) = range(11)
 
 
 # ============================================================
@@ -136,6 +156,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         [
             ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
             ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"],
+            ["🛃 ХОЧУ СТАТИ В ЧЕРГУ", "⛔ ЗУПИНИТИ ЧЕРГУ"],
         ],
         resize_keyboard=True,
     )
@@ -147,6 +168,41 @@ def get_user_full_name(uid) -> str:
             name = (r.get("FULL_NAME") or "").strip()
             return name if name else "Без імені"
     return "Без імені"
+
+def get_active_queue_watch(uid):
+    for r in queue_sheet.get_all_records():
+        if str(r.get("TELEGRAM", "")) == str(uid) and str(r.get("IS_ACTIVE", "")).upper() == "TRUE":
+            return r
+    return None
+
+
+def upsert_queue_watch(uid, full_name, checkpoint, target_datetime):
+    rows = queue_sheet.get_all_records()
+
+    for i, r in enumerate(rows, start=2):
+        if str(r.get("TELEGRAM", "")) == str(uid):
+            queue_sheet.update(f"A{i}:H{i}", [[
+                str(uid),
+                full_name,
+                checkpoint,
+                target_datetime,
+                "TRUE",
+                "FALSE",
+                "",
+                "",
+            ]])
+            return
+
+    queue_sheet.append_row([
+        str(uid),
+        full_name,
+        checkpoint,
+        target_datetime,
+        "TRUE",
+        "FALSE",
+        "",
+        "",
+    ])
 
 
 def tg_user_label(user) -> str:
@@ -172,6 +228,13 @@ DOC_LABELS = {
     "TACO": "КАЛІБРОВКА ТАХО",
     "INS": "СТРАХОВИЙ ПОЛІС",
     "GREEN": "ЗЕЛЕНА КАРТА",
+}
+
+CHECKPOINTS = {
+    "KRAKIVETS": "Краківець – Корчова",
+    "RAVA": "Рава-Руська – Хребенне",
+    "SHEHYNI": "Шегині – Медика",
+    "YAHODYN": "Ягодин – Дорогуськ",
 }
 
 
@@ -711,6 +774,115 @@ async def delete_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
+# QUEUE WATCH
+# ============================================================
+
+async def queue_watch_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kb = [[InlineKeyboardButton(v, callback_data=k)] for k, v in CHECKPOINTS.items()]
+    kb.append([InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")])
+
+    await update.message.reply_text(
+        "Оберіть пункт пропуску:",
+        reply_markup=InlineKeyboardMarkup(kb),
+    )
+    return QUEUE_SELECT_CHECKPOINT
+
+
+async def queue_watch_select_checkpoint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    if q.data == "CANCEL":
+        return await cancel(update, context)
+
+    context.user_data["queue_checkpoint_code"] = q.data
+    context.user_data["queue_checkpoint_name"] = CHECKPOINTS[q.data]
+
+    await q.edit_message_text(
+        f"Обрано: {CHECKPOINTS[q.data]}"
+    )
+
+    await q.message.reply_text(
+        "Введіть бажаний час перетину у форматі ДД.ММ.РРРР ГГ:ХХ\n"
+        "Наприклад: 25.05.2026 14:00",
+        reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
+    )
+    return QUEUE_ENTER_TARGET_DATETIME
+
+
+async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+
+    if text == "🔙 СКАСУВАТИ":
+        return await cancel(update, context)
+
+    try:
+        target_dt = datetime.strptime(text, "%d.%m.%Y %H:%M")
+    except Exception:
+        await update.message.reply_text(
+            "❗ Неправильний формат. Введіть так: 25.05.2026 14:00",
+            reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
+        )
+        return QUEUE_ENTER_TARGET_DATETIME
+
+    if target_dt <= datetime.now():
+        await update.message.reply_text(
+            "❗ Ця дата/час вже в минулому. Введіть майбутній час.",
+            reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
+        )
+        return QUEUE_ENTER_TARGET_DATETIME
+
+    uid = update.message.chat_id
+    full_name = get_user_full_name(uid)
+    checkpoint = context.user_data["queue_checkpoint_name"]
+
+    upsert_queue_watch(uid, full_name, checkpoint, text)
+
+    await update.message.reply_text(
+        f"Заявку збережено ✔\n\n"
+        f"Пункт пропуску: {checkpoint}\n"
+        f"Бажаний перетин: {text}\n\n"
+        f"Коли черга стане більшою або рівною часу, що лишився до перетину, "
+        f"бот почне писати кожні 5 хвилин.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+    await notify_admin(
+        context,
+        "🛃 Активовано моніторинг черги\n"
+        f"👤 {tg_user_label(update.effective_user)}\n"
+        f"🆔 {uid}\n"
+        f"📍 {checkpoint}\n"
+        f"🕒 {text}"
+    )
+
+    return ConversationHandler.END
+
+
+async def queue_watch_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.message.chat_id
+    rows = queue_sheet.get_all_records()
+    stopped = False
+
+    for i, r in enumerate(rows, start=2):
+        if str(r.get("TELEGRAM", "")) == str(uid):
+            queue_sheet.update_cell(i, 5, "FALSE")  # IS_ACTIVE
+            stopped = True
+            break
+
+    if stopped:
+        await update.message.reply_text(
+            "Нагадування про чергу зупинено ✔",
+            reply_markup=main_menu_keyboard(),
+        )
+    else:
+        await update.message.reply_text(
+            "Активної заявки на чергу немає.",
+            reply_markup=main_menu_keyboard(),
+        )
+
+
+# ============================================================
 # REMINDERS
 # ============================================================
 
@@ -768,6 +940,122 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
+# QUEUE WATCH JOB
+# ============================================================
+
+def parse_target_datetime(text: str) -> datetime:
+    return datetime.strptime(text.strip(), "%d.%m.%Y %H:%M")
+
+
+def parse_queue_duration_to_minutes(text: str) -> int:
+    """
+    Приклади:
+    '2 дні 2 години 25 хв'
+    '2 дні 25 хв'
+    '3 години 10 хв'
+    '45 хв'
+    """
+    s = text.lower().strip()
+
+    days = 0
+    hours = 0
+    minutes = 0
+
+    m = re.search(r"(\d+)\s*д", s)
+    if m:
+        days = int(m.group(1))
+
+    m = re.search(r"(\d+)\s*г", s)
+    if m:
+        hours = int(m.group(1))
+
+    m = re.search(r"(\d+)\s*хв", s)
+    if m:
+        minutes = int(m.group(1))
+
+    return days * 24 * 60 + hours * 60 + minutes
+
+
+def get_active_queue_rows():
+    rows = queue_sheet.get_all_records()
+    result = []
+    for i, r in enumerate(rows, start=2):
+        if str(r.get("IS_ACTIVE", "")).upper() == "TRUE":
+            result.append((i, r))
+    return result
+
+
+async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
+    """
+    ПОКИ ЩО ЗАГЛУШКА.
+    Тут пізніше підключимо реальне читання з eCherha.
+    Повернути треба рядок типу:
+    '2 дні 2 години 25 хв'
+    """
+    return None
+
+
+async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+    active_rows = get_active_queue_rows()
+
+    for row_index, r in active_rows:
+        uid_raw = str(r.get("TELEGRAM", "")).strip()
+        checkpoint = str(r.get("CHECKPOINT", "")).strip()
+        target_text = str(r.get("TARGET_DATETIME", "")).strip()
+        alert_started = str(r.get("ALERT_STARTED", "")).upper() == "TRUE"
+
+        if not uid_raw or not checkpoint or not target_text:
+            continue
+
+        try:
+            uid = int(uid_raw)
+            target_dt = parse_target_datetime(target_text)
+        except Exception:
+            continue
+
+        # якщо час уже минув — просто вимикаємо заявку
+        if now >= target_dt:
+            queue_sheet.update_cell(row_index, 5, "FALSE")  # IS_ACTIVE
+            continue
+
+        # читаємо поточну чергу
+        queue_text = await fetch_checkpoint_queue_text(checkpoint)
+
+        # оновлюємо службові поля навіть якщо поки нема даних
+        queue_sheet.update_cell(row_index, 7, queue_text or "")  # LAST_QUEUE_TEXT
+        queue_sheet.update_cell(row_index, 8, now.strftime("%d.%m.%Y %H:%M"))  # LAST_CHECK_AT
+
+        if not queue_text:
+            continue
+
+        try:
+            queue_minutes = parse_queue_duration_to_minutes(queue_text)
+        except Exception:
+            continue
+
+        minutes_until_target = int((target_dt - now).total_seconds() // 60)
+
+        if queue_minutes >= minutes_until_target:
+            msg = (
+                "🚨 ЧАС СТАВАТИ В ЧЕРГУ\n\n"
+                f"Пункт пропуску: {checkpoint}\n"
+                f"Бажаний перетин: {target_text}\n"
+                f"Поточна черга: {queue_text}\n\n"
+                "Натисни «⛔ ЗУПИНИТИ ЧЕРГУ», коли вже став у чергу."
+            )
+
+            try:
+                await context.bot.send_message(uid, msg)
+            except Exception:
+                pass
+
+            if not alert_started:
+                queue_sheet.update_cell(row_index, 6, "TRUE")  # ALERT_STARTED
+
+
+
+# ============================================================
 # POST_INIT (WEBHOOK REMOVE + JOB QUEUE)
 # ============================================================
 
@@ -786,6 +1074,13 @@ async def post_init(app: Application):
             interval=10800,  # що 3 години
             first=10,       # перший запуск через 10 секунд
         )
+
+         app.job_queue.run_repeating(
+            queue_watch_job,
+            interval=300,
+            first=20,
+        )
+
         print("[post_init] Job queue started")
     except Exception as e:
         print("[post_init] Job queue error:", e)
@@ -895,9 +1190,27 @@ def main():
         )
     )
 
+
+        # --- Queue watch ---
+    app.add_handler(
+        ConversationHandler(
+            entry_points=[
+                MessageHandler(filters.Regex("🛃 ХОЧУ СТАТИ В ЧЕРГУ"), queue_watch_start)
+            ],
+            states={
+                QUEUE_SELECT_CHECKPOINT: [CallbackQueryHandler(queue_watch_select_checkpoint)],
+                QUEUE_ENTER_TARGET_DATETIME: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save)
+                ],
+            },
+            fallbacks=[CommandHandler("start", start)],
+        )
+    )
+    
     # --- Simple handlers ---
     app.add_handler(MessageHandler(filters.Regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
     app.add_handler(MessageHandler(filters.Regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
+    app.add_handler(MessageHandler(filters.Regex("⛔ ЗУПИНИТИ ЧЕРГУ"), queue_watch_stop))
 
     print("BOT RUNNING 🚀")
 
