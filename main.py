@@ -1484,20 +1484,86 @@ def main():
 
     print("App OK")
 
-    # Глушимо службові оновлення (join/left, pinned і т.д.)
+    # Глушимо службові оновлення
     app.add_handler(MessageHandler(filters.StatusUpdate.ALL, lambda u, c: None))
 
-
+    # --- Registration (/start) ---
+    app.add_handler(
+        ConversationHandler(
+            entry_points=[CommandHandler("start", start)],
+            states={
+                REG_ENTER_NAME: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, register_save),
+                ],
+            },
+            fallbacks=[CommandHandler("start", start)],
+        )
+    )
 
     # --- Add document ---
     app.add_handler(
         ConversationHandler(
             entry_points=[
-                MessageHandler(filters.Regex("➕ ДОДАТИ ДОКУМЕНТ"), add_doc_start)
+                MessageHandler(filters.Regex("ДОДАТИ ДОКУМЕНТ"), add_doc_start)
+            ],
+            states={
+                ADD_SELECT_TYPE: [CallbackQueryHandler(add_doc_type)],
+                ADD_ENTER_PLATE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_plate),
+                ],
+                ADD_SELECT_DOC: [CallbackQueryHandler(add_doc_name)],
+                ADD_ENTER_CUSTOM_DOC: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, add_custom_doc)
+                ],
+                ADD_ENTER_DATE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_date)
+                ],
+            },
+            fallbacks=[CommandHandler("start", start)],
+        )
+    )
+
+    # --- Update document ---
+    app.add_handler(
+        ConversationHandler(
+            entry_points=[
+                MessageHandler(filters.Regex("ОНОВИТИ ДОКУМЕНТ"), update_start)
+            ],
+            states={
+                UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
+                UPDATE_ENTER_DATE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, update_save)
+                ],
+            },
+            fallbacks=[CommandHandler("start", start)],
+        )
+    )
+
+    # --- Delete document ---
+    app.add_handler(
+        ConversationHandler(
+            entry_points=[
+                MessageHandler(filters.Regex("ВИДАЛИТИ ДОКУМЕНТ"), delete_start)
+            ],
+            states={
+                DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
+            },
+            fallbacks=[CommandHandler("start", start)],
+        )
+    )
+
+    # --- Queue watch ---
+    app.add_handler(
+        ConversationHandler(
+            entry_points=[
+                MessageHandler(filters.Regex("СТАТИ В ЧЕРГУ"), queue_watch_start)
             ],
             states={
                 QUEUE_SELECT_CHECKPOINT: [
-                    CallbackQueryHandler(queue_watch_select_checkpoint)
+                    CallbackQueryHandler(
+                        queue_watch_select_checkpoint,
+                        pattern=r"^(QUEUE_CP:|QUEUE_CANCEL)"
+                    )
                 ],
                 QUEUE_ENTER_TARGET_DATETIME: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save)
@@ -1512,78 +1578,16 @@ def main():
                     MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save_vehicles)
                 ],
             },
-
-            
             fallbacks=[CommandHandler("start", start)],
         )
     )
 
-    # --- Update document ---
-    app.add_handler(
-        ConversationHandler(
-            entry_points=[
-                MessageHandler(filters.Regex("✏️ ОНОВИТИ ДОКУМЕНТ"), update_start)
-            ],
-            states={
-                UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
-                UPDATE_ENTER_DATE: [
-                    MessageHandler(
-                        filters.TEXT & ~filters.COMMAND, update_save
-                    )
-                ],
-            },
-            fallbacks=[CommandHandler("start", start)],
-        )
-    )
+    # --- Simple handlers ---
+    app.add_handler(MessageHandler(filters.Regex("МОЇ ДОКУМЕНТИ"), my_docs))
+    app.add_handler(MessageHandler(filters.Regex("ЗУПИНИТИ ЧЕРГУ"), queue_watch_stop))
+    app.add_handler(MessageHandler(filters.Regex("МОЇ ЧЕРГИ"), my_queues))
+    app.add_handler(MessageHandler(filters.Regex("ЗАВАНТАЖЕНІСТЬ КОРДОНІВ"), border_load))
 
-    # --- Delete document ---
-    app.add_handler(
-        ConversationHandler(
-            entry_points=[
-                MessageHandler(filters.Regex("🗑 ВИДАЛИТИ ДОКУМЕНТ"), delete_start)
-            ],
-            states={
-                DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
-            },
-            fallbacks=[CommandHandler("start", start)],
-        )
-    )
-
-
-        # --- Queue watch ---
-    app.add_handler(
-        ConversationHandler(
-            entry_points=[
-                MessageHandler(filters.Regex("СТАТИ В ЧЕРГУ"), queue_watch_start)
-            ],
-            states={
-                QUEUE_SELECT_CHECKPOINT: [CallbackQueryHandler(queue_watch_select_checkpoint)],
-                QUEUE_ENTER_TARGET_DATETIME: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save)
-                ],
-                QUEUE_ASK_VEHICLES: [CallbackQueryHandler(queue_watch_choose_vehicles)],
-                QUEUE_ENTER_TARGET_VEHICLES: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save_vehicles)
-                ],
-            },
-            fallbacks=[CommandHandler("start", start)],
-        )
-    )
-
-
-    app.add_handler(MessageHandler(filters.Regex("СТАТИ В ЧЕРГУ"), queue_watch_start))
-    app.add_handler(CallbackQueryHandler(queue_watch_select_checkpoint, pattern=r"^(QUEUE_CP:|QUEUE_CANCEL)"))
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND & filters.Regex(r"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$|🔙 СКАСУВАТИ"),
-            queue_watch_save
-        )
-    )        # --- Simple handlers ---
-    app.add_handler(MessageHandler(filters.Regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
-    app.add_handler(MessageHandler(filters.Regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
-    app.add_handler(MessageHandler(filters.Regex("⛔ ЗУПИНИТИ ЧЕРГУ"), queue_watch_stop))
-    app.add_handler(MessageHandler(filters.Regex("📋 МОЇ ЧЕРГИ"), my_queues))
-    app.add_handler(MessageHandler(filters.Regex("🌍 ЗАВАНТАЖЕНІСТЬ КОРДОНІВ"), border_load))
     print("BOT RUNNING 🚀")
 
     try:
