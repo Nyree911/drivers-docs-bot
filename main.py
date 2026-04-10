@@ -1070,7 +1070,7 @@ async def post_init(app: Application):
     try:
         app.job_queue.run_repeating(
             reminders_job,
-            interval=10800,  # що 3 години
+            interval=10800,  # що 3 години/
             first=10,       # перший запуск через 10 секунд
         )
 
