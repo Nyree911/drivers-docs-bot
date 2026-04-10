@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.INFO)
 
-# Telegram #@1
+# Telegram 
 from telegram import (
     ReplyKeyboardMarkup,
     InlineKeyboardMarkup,
@@ -83,6 +83,7 @@ QUEUE_REQUIRED_COLUMNS = [
     "FULL_NAME",
     "CHECKPOINT",
     "TARGET_DATETIME",
+    "TARGET_VEHICLES",
     "IS_ACTIVE",
     "ALERT_STARTED",
     "LAST_QUEUE_TEXT",
@@ -115,7 +116,9 @@ if sheet.row_values(1) != REQUIRED_COLUMNS:
     DELETE_SELECT_DOC,
     QUEUE_SELECT_CHECKPOINT,
     QUEUE_ENTER_TARGET_DATETIME,
-) = range(11)
+    QUEUE_ASK_VEHICLES,
+    QUEUE_ENTER_TARGET_VEHICLES,
+) = range(13)
 
 
 # ============================================================
@@ -186,16 +189,17 @@ def get_active_queue_watch(uid):
     return None
 
 
-def upsert_queue_watch(uid, full_name, checkpoint, target_datetime):
+def upsert_queue_watch(uid, full_name, checkpoint, target_datetime, target_vehicles=""):
     rows = queue_sheet.get_all_records()
 
     for i, r in enumerate(rows, start=2):
         if str(r.get("TELEGRAM", "")) == str(uid):
-            queue_sheet.update(f"A{i}:H{i}", [[
+            queue_sheet.update(f"A{i}:I{i}", [[
                 str(uid),
                 full_name,
                 checkpoint,
                 target_datetime,
+                str(target_vehicles) if target_vehicles else "",
                 "TRUE",
                 "FALSE",
                 "",
@@ -208,12 +212,12 @@ def upsert_queue_watch(uid, full_name, checkpoint, target_datetime):
         full_name,
         checkpoint,
         target_datetime,
+        str(target_vehicles) if target_vehicles else "",
         "TRUE",
         "FALSE",
         "",
         "",
     ])
-
 
 def tg_user_label(user) -> str:
     """Формує читабельний підпис користувача."""
@@ -887,7 +891,6 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "🔙 СКАСУВАТИ":
         return await cancel(update, context)
 
-    # ✅ парсимо дату
     try:
         target_dt = datetime.strptime(text, "%d.%m.%Y %H:%M").replace(
             tzinfo=ZoneInfo("Europe/Kyiv")
@@ -901,7 +904,6 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
 
-    # ❗ перевірка: не в минулому
     if target_dt <= now:
         await update.message.reply_text(
             "❗ Ця дата/час вже в минулому. Введіть майбутній час.",
@@ -909,9 +911,7 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return QUEUE_ENTER_TARGET_DATETIME
 
-    # ❗ обмеження: максимум 10 днів
     max_dt = now + timedelta(days=10)
-
     if target_dt > max_dt:
         await update.message.reply_text(
             "❗ Можна обрати дату не більше ніж на 10 днів вперед.",
@@ -919,18 +919,103 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return QUEUE_ENTER_TARGET_DATETIME
 
-    # ✅ збереження
+    context.user_data["queue_target_datetime"] = text
+
+    kb = [
+        [InlineKeyboardButton("🚚 Додати поріг по машинах", callback_data="QUEUE_VEHICLES_YES")],
+        [InlineKeyboardButton("⏱ Тільки по часу", callback_data="QUEUE_VEHICLES_NO")],
+        [InlineKeyboardButton("❌ СКАСУВАТИ", callback_data="CANCEL")],
+    ]
+
+    await update.message.reply_text(
+        "Хочете додати ще поріг по кількості машин у черзі?",
+        reply_markup=InlineKeyboardMarkup(kb),
+    )
+
+    return QUEUE_ASK_VEHICLES
+
+
+async def queue_watch_choose_vehicles(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    if q.data == "CANCEL":
+        return await cancel(update, context)
+
+    if q.data == "QUEUE_VEHICLES_NO":
+        uid = q.from_user.id
+        full_name = get_user_full_name(uid)
+        checkpoint = context.user_data["queue_checkpoint_name"]
+        target_datetime = context.user_data["queue_target_datetime"]
+
+        upsert_queue_watch(uid, full_name, checkpoint, target_datetime, "")
+
+        await q.edit_message_text("Обрано: тільки сповіщення по часу.")
+        await q.message.reply_text(
+            f"Заявку збережено ✔\n\n"
+            f"Пункт пропуску: {checkpoint}\n"
+            f"Бажаний перетин: {target_datetime}\n"
+            f"Поріг по машинах: не задано",
+            reply_markup=main_menu_keyboard(),
+        )
+
+        await notify_admin(
+            context,
+            "🛃 Активовано моніторинг черги\n"
+            f"👤 {tg_user_label(q.from_user)}\n"
+            f"🆔 {uid}\n"
+            f"📍 {checkpoint}\n"
+            f"🕒 {target_datetime}\n"
+            f"🚚 Машини: не задано"
+        )
+
+        context.user_data.pop("queue_target_datetime", None)
+        return ConversationHandler.END
+
+    if q.data == "QUEUE_VEHICLES_YES":
+        await q.edit_message_text("Введіть поріг по машинах, наприклад: 20")
+        await q.message.reply_text(
+            "Скільки машин у черзі має бути, щоб теж спрацювало сповіщення?",
+            reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
+        )
+        return QUEUE_ENTER_TARGET_VEHICLES
+
+
+async def queue_watch_save_vehicles(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+
+    if text == "🔙 СКАСУВАТИ":
+        return await cancel(update, context)
+
+    if not text.isdigit():
+        await update.message.reply_text(
+            "❗ Введіть тільки число. Наприклад: 20",
+            reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
+        )
+        return QUEUE_ENTER_TARGET_VEHICLES
+
+    target_vehicles = int(text)
+
+    if target_vehicles <= 0:
+        await update.message.reply_text(
+            "❗ Кількість машин має бути більшою за 0.",
+            reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
+        )
+        return QUEUE_ENTER_TARGET_VEHICLES
+
     uid = update.message.chat_id
     full_name = get_user_full_name(uid)
     checkpoint = context.user_data["queue_checkpoint_name"]
+    target_datetime = context.user_data["queue_target_datetime"]
 
-    upsert_queue_watch(uid, full_name, checkpoint, text)
+    upsert_queue_watch(uid, full_name, checkpoint, target_datetime, target_vehicles)
 
     await update.message.reply_text(
         f"Заявку збережено ✔\n\n"
         f"Пункт пропуску: {checkpoint}\n"
-        f"Бажаний перетин: {text}\n\n"
-        f"Бот почне сповіщати, коли буде час ставати в чергу.",
+        f"Бажаний перетин: {target_datetime}\n"
+        f"Поріг по машинах: {target_vehicles}\n\n"
+        f"Бот сповістить, коли раніше спрацює або час, або кількість машин.",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -940,9 +1025,11 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 {tg_user_label(update.effective_user)}\n"
         f"🆔 {uid}\n"
         f"📍 {checkpoint}\n"
-        f"🕒 {text}"
+        f"🕒 {target_datetime}\n"
+        f"🚚 Машини: {target_vehicles}"
     )
 
+    context.user_data.pop("queue_target_datetime", None)
     return ConversationHandler.END
 
 
@@ -1002,14 +1089,18 @@ async def my_queues(update: Update, context: ContextTypes.DEFAULT_TYPE):
         full_name = (r.get("FULL_NAME") or "Без імені").strip()
         checkpoint = (r.get("CHECKPOINT") or "—").strip()
         target_dt = (r.get("TARGET_DATETIME") or "—").strip()
+        target_vehicles = (r.get("TARGET_VEHICLES") or "").strip()
         last_queue = (r.get("LAST_QUEUE_TEXT") or "немає даних").strip()
         last_check = (r.get("LAST_CHECK_AT") or "ще не перевірялось").strip()
+
+        vehicles_text = target_vehicles if target_vehicles else "не задано"
 
         if is_admin:
             block = (
                 f"{i}. {full_name}\n"
                 f"Пункт: {checkpoint}\n"
                 f"Бажаний перетин: {target_dt}\n"
+                f"Поріг по машинах: {vehicles_text}\n"
                 f"Остання черга: {last_queue}\n"
                 f"Перевірено: {last_check}"
             )
@@ -1017,6 +1108,7 @@ async def my_queues(update: Update, context: ContextTypes.DEFAULT_TYPE):
             block = (
                 f"{i}. {checkpoint}\n"
                 f"Бажаний перетин: {target_dt}\n"
+                f"Поріг по машинах: {vehicles_text}\n"
                 f"Остання черга: {last_queue}\n"
                 f"Перевірено: {last_check}"
             )
@@ -1265,39 +1357,58 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
     for row_index, r in active_rows:
         try:
             checkpoint_name = r.get("CHECKPOINT")
-
             uid = int(r["TELEGRAM"])
             target_dt = parse_target_datetime(r["TARGET_DATETIME"])
+            target_vehicles_raw = str(r.get("TARGET_VEHICLES", "")).strip()
 
             minutes_until_target = int((target_dt - now).total_seconds() / 60)
 
-            queue_text = await fetch_checkpoint_queue_text(checkpoint_name)
+            items = fetch_workload_data()
+            found = None
 
-            if not queue_text:
+            target_title = CHECKPOINT_TITLE_MAP.get(checkpoint_name)
+            for item in items:
+                if (item.get("title") or "").strip() == target_title:
+                    found = item
+                    break
+
+            if not found:
                 continue
 
-            now_str = now.strftime("%d.%m.%Y %H:%M")
+            wait_minutes = int(found.get("wait_time") or 0)
+            vehicles_count = int(found.get("vehicle_in_active_queues_counts") or 0)
+            queue_text = minutes_to_text(wait_minutes)
 
-            queue_sheet.update(f"G{row_index}:H{row_index}", [[
+            now_str = now.strftime("%d.%m.%Y %H:%M")
+            queue_sheet.update(f"H{row_index}:I{row_index}", [[
                 queue_text,
                 now_str
             ]])
 
-            queue_minutes = parse_queue_duration_to_minutes(queue_text)
-
-            print("queue_minutes:", queue_minutes)
+            print("queue_minutes:", wait_minutes)
             print("minutes_until_target:", minutes_until_target)
+            print("vehicles_count:", vehicles_count)
+            print("target_vehicles_raw:", target_vehicles_raw)
 
-            # ✅ УМОВА ЗА 30 ХВ
-            if queue_minutes >= max(minutes_until_target - 30, 0):
+            time_trigger = wait_minutes >= max(minutes_until_target - 30, 0)
 
-                print("ALERT: sending message")
+            vehicles_trigger = False
+            if target_vehicles_raw.isdigit():
+                vehicles_trigger = vehicles_count >= int(target_vehicles_raw)
+
+            if time_trigger or vehicles_trigger:
+                reason = "за часом"
+                if vehicles_trigger and not time_trigger:
+                    reason = "за кількістю машин"
+                elif vehicles_trigger and time_trigger:
+                    reason = "за часом / машинами"
 
                 text = (
                     f"🚨 ЧАС СТАВАТИ В ЧЕРГУ\n\n"
                     f"Пункт пропуску: {checkpoint_name}\n"
-                    f"До бажаного часу залишилось ≈ 30 хв\n"
-                    f"Поточна черга: {queue_text}\n\n"
+                    f"Причина спрацювання: {reason}\n"
+                    f"Поточна черга: {queue_text}\n"
+                    f"Машин в активних чергах: {vehicles_count}\n\n"
                     f"Натисни «⛔ ЗУПИНИТИ ЧЕРГУ», коли вже став."
                 )
 
@@ -1438,6 +1549,10 @@ def main():
                 QUEUE_SELECT_CHECKPOINT: [CallbackQueryHandler(queue_watch_select_checkpoint)],
                 QUEUE_ENTER_TARGET_DATETIME: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save)
+                ],
+                QUEUE_ASK_VEHICLES: [CallbackQueryHandler(queue_watch_choose_vehicles)],
+                QUEUE_ENTER_TARGET_VEHICLES: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save_vehicles)
                 ],
             },
             fallbacks=[CommandHandler("start", start)],
