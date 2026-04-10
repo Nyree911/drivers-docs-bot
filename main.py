@@ -1249,6 +1249,13 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
             if not queue_text:
                 continue
 
+            now_str = now.strftime("%d.%m.%Y %H:%M")
+
+            queue_sheet.update(f"G{row_index}:H{row_index}", [[
+                queue_text,
+                now_str
+            ]])
+
             queue_minutes = parse_queue_duration_to_minutes(queue_text)
 
             print("queue_minutes:", queue_minutes)
