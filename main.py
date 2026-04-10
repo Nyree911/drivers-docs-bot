@@ -166,6 +166,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             ["➕ ДОДАТИ ДОКУМЕНТ", "📄 МОЇ ДОКУМЕНТИ"],
             ["✏️ ОНОВИТИ ДОКУМЕНТ", "🗑 ВИДАЛИТИ ДОКУМЕНТ"],
             ["🛃 ХОЧУ СТАТИ В ЧЕРГУ", "⛔ ЗУПИНИТИ ЧЕРГУ"],
+            ["📋 МОЇ ЧЕРГИ", "🌍 ЗАВАНТАЖЕНІСТЬ КОРДОНІВ"],
         ],
         resize_keyboard=True,
     )
@@ -246,7 +247,48 @@ CHECKPOINTS = {
     "YAHODYN": "Ягодин – Дорогуськ",
 }
 
+WORKLOAD_API_URL = "https://back.echerha.gov.ua/api/v4/workload/1"
 
+CHECKPOINT_TITLE_MAP = {
+    "Краківець – Корчова": "Краківець – Корчова (для вантажівок ≥ 7,5 тонн)",
+    "Рава-Руська – Хребенне": "Рава-Руська – Хребенне (для вантажівок ≥ 7,5 тонн)",
+    "Шегині – Медика": "Шегині – Медика (для вантажівок ≥ 7,5 тонн)",
+    "Ягодин – Дорогуськ": "Ягодин – Дорогуськ (для вантажівок ≥ 7,5 тонн)",
+}
+
+
+def minutes_to_text(minutes: int) -> str:
+    days = minutes // 1440
+    hours = (minutes % 1440) // 60
+    mins = minutes % 60
+
+    parts = []
+
+    if days:
+        parts.append(f"{days} дн")
+    if hours:
+        parts.append(f"{hours} год")
+    if mins or not parts:
+        parts.append(f"{mins} хв")
+
+    return " ".join(parts)
+
+
+def fetch_workload_data():
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Origin": "https://echerha.gov.ua",
+        "Referer": "https://echerha.gov.ua/",
+        "x-client-locale": "uk",
+        "x-user-agent": "UABorder/3.5.0 Web/1.1.0 User/guest",
+        "User-Agent": "Mozilla/5.0",
+    }
+
+    resp = requests.get(WORKLOAD_API_URL, headers=headers, timeout=20)
+    resp.raise_for_status()
+    payload = resp.json()
+    return payload.get("data", [])
 # ============================================================
 # CANCEL (для всіх сценаріїв)
 # ============================================================
@@ -894,7 +936,120 @@ async def queue_watch_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+async def my_queues(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.message.chat_id
+    is_admin = uid == ADMIN_ID
 
+    rows = queue_sheet.get_all_records()
+
+    if is_admin:
+        filtered = [
+            r for r in rows
+            if str(r.get("IS_ACTIVE", "")).upper() == "TRUE"
+        ]
+    else:
+        filtered = [
+            r for r in rows
+            if str(r.get("TELEGRAM", "")) == str(uid)
+            and str(r.get("IS_ACTIVE", "")).upper() == "TRUE"
+        ]
+
+    if not filtered:
+        await update.message.reply_text(
+            "Активних черг немає.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+
+    lines = []
+
+    for i, r in enumerate(filtered, start=1):
+        full_name = (r.get("FULL_NAME") or "Без імені").strip()
+        checkpoint = (r.get("CHECKPOINT") or "—").strip()
+        target_dt = (r.get("TARGET_DATETIME") or "—").strip()
+        last_queue = (r.get("LAST_QUEUE_TEXT") or "немає даних").strip()
+        last_check = (r.get("LAST_CHECK_AT") or "ще не перевірялось").strip()
+
+        if is_admin:
+            block = (
+                f"{i}. {full_name}\n"
+                f"Пункт: {checkpoint}\n"
+                f"Бажаний перетин: {target_dt}\n"
+                f"Остання черга: {last_queue}\n"
+                f"Перевірено: {last_check}"
+            )
+        else:
+            block = (
+                f"{i}. {checkpoint}\n"
+                f"Бажаний перетин: {target_dt}\n"
+                f"Остання черга: {last_queue}\n"
+                f"Перевірено: {last_check}"
+            )
+
+        lines.append(block)
+
+    await update.message.reply_text(
+        "\n\n".join(lines),
+        reply_markup=main_menu_keyboard(),
+    )
+
+async def border_load(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        items = fetch_workload_data()
+    except Exception as e:
+        await update.message.reply_text(
+            f"Не вдалося отримати дані по кордонах.\nПомилка: {e}",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+
+    monitored_titles = {
+        "Краківець – Корчова": "Краківець – Корчова (для вантажівок ≥ 7,5 тонн)",
+        "Рава-Руська – Хребенне": "Рава-Руська – Хребенне (для вантажівок ≥ 7,5 тонн)",
+        "Шегині – Медика": "Шегині – Медика (для вантажівок ≥ 7,5 тонн)",
+        "Ягодин – Дорогуськ": "Ягодин – Дорогуськ (для вантажівок ≥ 7,5 тонн)",
+    }
+
+    lines = []
+    now_text = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%d.%m.%Y %H:%M")
+
+    for short_name, full_title in monitored_titles.items():
+        found = None
+
+        for item in items:
+            title = (item.get("title") or "").strip()
+            if title == full_title:
+                found = item
+                break
+
+        if not found:
+            lines.append(f"{short_name}\nЧерга: немає даних\n")
+            continue
+
+        wait_minutes = int(found.get("wait_time") or 0)
+        queue_text = minutes_to_text(wait_minutes)
+        vehicles = int(found.get("vehicle_in_active_queues_counts") or 0)
+        is_paused = bool(found.get("is_paused"))
+
+        pause_text = "так" if is_paused else "ні"
+
+        block = (
+            f"{short_name}\n"
+            f"Черга: {queue_text}\n"
+            f"Машин в активних чергах: {vehicles}\n"
+            f"Пауза: {pause_text}"
+        )
+        lines.append(block)
+
+    text = (
+        f"🌍 Завантаженість кордонів станом на {now_text}\n\n"
+        + "\n\n".join(lines)
+    )
+
+    await update.message.reply_text(
+        text,
+        reply_markup=main_menu_keyboard(),
+    )
 
 # ============================================================
 # REMINDERS
@@ -999,6 +1154,8 @@ def get_active_queue_rows():
         if str(r.get("IS_ACTIVE", "")).upper() == "TRUE":
             result.append((i, r))
     return result
+
+
 async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
     url = "https://back.echerha.gov.ua/api/v4/workload/1"
 
@@ -1258,11 +1415,12 @@ def main():
         )
     )
     
-    # --- Simple handlers ---
+        # --- Simple handlers ---
     app.add_handler(MessageHandler(filters.Regex("🚘 МОЇ ТРАНСПОРТИ"), my_vehicles))
     app.add_handler(MessageHandler(filters.Regex("📄 МОЇ ДОКУМЕНТИ"), my_docs))
     app.add_handler(MessageHandler(filters.Regex("⛔ ЗУПИНИТИ ЧЕРГУ"), queue_watch_stop))
-
+    app.add_handler(MessageHandler(filters.Regex("📋 МОЇ ЧЕРГИ"), my_queues))
+    app.add_handler(MessageHandler(filters.Regex("🌍 ЗАВАНТАЖЕНІСТЬ КОРДОНІВ"), border_load))
     print("BOT RUNNING 🚀")
 
     try:
