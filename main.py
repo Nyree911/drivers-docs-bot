@@ -1039,8 +1039,8 @@ async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
         if title != target_title:
             continue
 
-        #wait_minutes = int(item.get("wait_time") or 0)
-        wait_minutes = 3000
+        wait_minutes = int(item.get("wait_time") or 0)
+     
 
         days = wait_minutes // (24 * 60)
         hours = (wait_minutes % (24 * 60)) // 60
