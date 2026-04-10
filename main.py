@@ -3,6 +3,7 @@ import logging
 import os
 import json
 import re
+import requests
 from datetime import datetime, date
 
 # Telegram #
@@ -988,11 +989,38 @@ def get_active_queue_rows():
     return result
 
 async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
-    """
-    Тут пізніше підключимо реальне джерело eCherha.
-    Поки що заглушка.
-    """
-    return None
+    try:
+        url = "https://echerha.gov.ua/workload/1/1"
+
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+
+        resp = requests.get(url, headers=headers, timeout=15)
+        html = resp.text
+
+        # простий пошук по тексту сторінки
+        pattern_map = {
+            "Краківець – Корчова": r"Краківець.*?(\d+\s*д.*?\d+\s*хв|\d+\s*г.*?\d+\s*хв|\d+\s*хв)",
+            "Рава-Руська – Хребенне": r"Рава-Руська.*?(\d+\s*д.*?\d+\s*хв|\d+\s*г.*?\d+\s*хв|\d+\s*хв)",
+            "Шегині – Медика": r"Шегині.*?(\d+\s*д.*?\d+\s*хв|\d+\s*г.*?\d+\s*хв|\d+\s*хв)",
+            "Ягодин – Дорогуськ": r"Ягодин.*?(\d+\s*д.*?\d+\s*хв|\d+\s*г.*?\d+\s*хв|\d+\s*хв)",
+        }
+
+        pattern = pattern_map.get(checkpoint_name)
+        if not pattern:
+            return None
+
+        match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+
+        if match:
+            return match.group(1).strip()
+
+        return None
+
+    except Exception as e:
+        print("QUEUE FETCH ERROR:", e)
+        return None
     
 async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
@@ -1076,7 +1104,7 @@ async def post_init(app: Application):
 
         app.job_queue.run_repeating(
             queue_watch_job,
-            interval=300,
+            interval=30,
             first=20,
         )
 
