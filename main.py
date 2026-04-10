@@ -5,6 +5,7 @@ import json
 import re
 import requests
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 
 # Telegram #
 from telegram import (
@@ -818,7 +819,7 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel(update, context)
 
     try:
-        target_dt = datetime.strptime(text, "%d.%m.%Y %H:%M")
+        target_dt = datetime.strptime(text, "%d.%m.%Y %H:%M").replace(tzinfo=ZoneInfo("Europe/Kyiv"))
     except Exception:
         await update.message.reply_text(
             "❗ Неправильний формат. Введіть так: 25.05.2026 14:00",
@@ -826,7 +827,7 @@ async def queue_watch_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return QUEUE_ENTER_TARGET_DATETIME
 
-    if target_dt <= datetime.now():
+    if target_dt <= datetime.now(ZoneInfo("Europe/Kyiv")):
         await update.message.reply_text(
             "❗ Ця дата/час вже в минулому. Введіть майбутній час.",
             reply_markup=ReplyKeyboardMarkup([["🔙 СКАСУВАТИ"]], resize_keyboard=True),
@@ -898,7 +899,7 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
     print(f"[reminders_job] Fired at {now}")
     app = context.application
 
-    hour = datetime.now().hour
+    hour = datetime.now(ZoneInfo("Europe/Kyiv")).hour
     if not (9 <= hour < 18):
         return
 
@@ -1023,7 +1024,7 @@ async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
         return None
     
 async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now()
+    hour = datetime.now(ZoneInfo("Europe/Kyiv")).hour
     active_rows = get_active_queue_rows()
 
     for row_index, r in active_rows:
