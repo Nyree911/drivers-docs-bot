@@ -302,6 +302,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         msg = update.message
 
+    context.user_data.clear()
+
     await msg.reply_text(
         "Дію скасовано. Повертаюсь у головне меню.",
         reply_markup=main_menu_keyboard(),
