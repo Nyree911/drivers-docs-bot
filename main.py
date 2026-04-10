@@ -3,9 +3,7 @@ import logging
 import os
 import json
 import re
-import requests
 from datetime import datetime, date
-from playwright.async_api import async_playwright
 
 # Telegram #
 from telegram import (
@@ -989,56 +987,13 @@ def get_active_queue_rows():
             result.append((i, r))
     return result
 
-
-
-
-CHECKPOINT_URLS = {
-    "Краківець – Корчова": "https://echerha.gov.ua/workload/1/1",
-    "Рава-Руська – Хребенне": "https://echerha.gov.ua/workload/1/1",
-    "Шегині – Медика": "https://echerha.gov.ua/workload/1/1",
-    "Ягодин – Дорогуськ": "https://echerha.gov.ua/workload/1/1",
-}
-
-CHECKPOINT_PATTERNS = {
-    "Краківець – Корчова": r"Краківець\s*[–-]\s*Корчова.*?(\d+\s*д[^\n\r]*|\d+\s*г[^\n\r]*|\d+\s*хв[^\n\r]*)",
-    "Рава-Руська – Хребенне": r"Рава-Руська\s*[–-]\s*Хребенне.*?(\d+\s*д[^\n\r]*|\d+\s*г[^\n\r]*|\d+\s*хв[^\n\r]*)",
-    "Шегині – Медика": r"Шегині\s*[–-]\s*Медика.*?(\d+\s*д[^\n\r]*|\d+\s*г[^\n\r]*|\d+\s*хв[^\n\r]*)",
-    "Ягодин – Дорогуськ": r"Ягодин\s*[–-]\s*Дорогуськ.*?(\d+\s*д[^\n\r]*|\d+\s*г[^\n\r]*|\d+\s*хв[^\n\r]*)",
-}
-
-
 async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
-    url = CHECKPOINT_URLS.get(checkpoint_name, "https://echerha.gov.ua/workload/1/1")
-    pattern = CHECKPOINT_PATTERNS.get(checkpoint_name)
-
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            await page.goto(url, wait_until="networkidle", timeout=60000)
-
-            body_text = await page.locator("body").inner_text()
-            await browser.close()
-
-        if not body_text:
-            print("ECHERHA: empty body text")
-            return None
-
-        print("ECHERHA BODY SAMPLE:", body_text[:2000])
-
-        if pattern:
-            m = re.search(pattern, body_text, flags=re.IGNORECASE | re.DOTALL)
-            if m:
-                queue_text = m.group(1).strip()
-                print(f"ECHERHA MATCH {checkpoint_name}: {queue_text}")
-                return queue_text
-
-        print(f"ECHERHA: no match for checkpoint {checkpoint_name}")
-        return None
-
-    except Exception as e:
-        print("ECHERHA PLAYWRIGHT ERROR:", e)
-        return None
+    """
+    Тут пізніше підключимо реальне джерело eCherha.
+    Поки що заглушка.
+    """
+    return None
+    
 async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
     active_rows = get_active_queue_rows()
