@@ -1031,7 +1031,7 @@ async def queue_watch_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for i, r in enumerate(rows, start=2):
         if str(r.get("TELEGRAM", "")) == str(uid):
-            queue_sheet.update_cell(i, 5, "FALSE")  # IS_ACTIVE
+            queue_sheet.update_cell(i, 6, "FALSE")  # IS_ACTIVE
             stopped = True
             break
 
@@ -1346,6 +1346,9 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
 
     for row_index, r in active_rows:
         try:
+            if str(r.get("IS_ACTIVE", "")).upper() != "TRUE":
+                continue
+
             checkpoint_name = r.get("CHECKPOINT")
             uid = int(r["TELEGRAM"])
             target_dt = parse_target_datetime(r["TARGET_DATETIME"])
