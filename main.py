@@ -1600,11 +1600,10 @@ def main():
     )
 
     # --- Simple handlers ---
-    app.add_handler(MessageHandler(filters.Regex("МОЇ ДОКУМЕНТИ"), my_docs))
-    app.add_handler(MessageHandler(filters.Regex("ЗУПИНИТИ ЧЕРГУ"), queue_watch_stop))
-    app.add_handler(MessageHandler(filters.Regex("МОЇ ЧЕРГИ"), my_queues))
-    app.add_handler(MessageHandler(filters.Regex("ЗАВАНТАЖЕНІСТЬ КОРДОНІВ"), border_load))
-
+    MessageHandler(filters.TEXT & filters.Regex(r".*МОЇ ДОКУМЕНТИ.*"), my_docs)
+    MessageHandler(filters.TEXT & filters.Regex(r".*ЗУПИНИТИ ЧЕРГУ.*"), queue_watch_stop)
+    MessageHandler(filters.TEXT & filters.Regex(r".*МОЇ ЧЕРГИ.*"), my_queues)
+    MessageHandler(filters.TEXT & filters.Regex(r".*ЗАВАНТАЖЕНІСТЬ КОРДОНІВ.*"), border_load)
     print("BOT RUNNING 🚀")
 
     try:
