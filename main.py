@@ -1049,66 +1049,79 @@ async def queue_watch_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def my_queues(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.message.chat_id
-    is_admin = uid == ADMIN_ID
+    try:
+        uid = update.message.chat_id
+        is_admin = uid == ADMIN_ID
 
-    rows = queue_sheet.get_all_records()
-
-    if is_admin:
-        filtered = [
-            r for r in rows
-            if str(r.get("IS_ACTIVE", "")).upper() == "TRUE"
-        ]
-    else:
-        filtered = [
-            r for r in rows
-            if str(r.get("TELEGRAM", "")) == str(uid)
-            and str(r.get("IS_ACTIVE", "")).upper() == "TRUE"
-        ]
-
-    if not filtered:
-        await update.message.reply_text(
-            "Активних черг немає.",
-            reply_markup=main_menu_keyboard(),
-        )
-        return
-
-    lines = []
-
-    for i, r in enumerate(filtered, start=1):
-        full_name = (r.get("FULL_NAME") or "Без імені").strip()
-        checkpoint = (r.get("CHECKPOINT") or "—").strip()
-        target_dt = (r.get("TARGET_DATETIME") or "—").strip()
-        target_vehicles = (r.get("TARGET_VEHICLES") or "").strip()
-        last_queue = (r.get("LAST_QUEUE_TEXT") or "немає даних").strip()
-        last_check = (r.get("LAST_CHECK_AT") or "ще не перевірялось").strip()
-
-        vehicles_text = target_vehicles if target_vehicles else "не задано"
+        rows = queue_sheet.get_all_records()
+        print("MY_QUEUES rows count:", len(rows))
 
         if is_admin:
-            block = (
-                f"{i}. {full_name}\n"
-                f"Пункт: {checkpoint}\n"
-                f"Бажаний перетин: {target_dt}\n"
-                f"Поріг по машинах: {vehicles_text}\n"
-                f"Остання черга: {last_queue}\n"
-                f"Перевірено: {last_check}"
-            )
+            filtered = [
+                r for r in rows
+                if str(r.get("IS_ACTIVE", "")).upper() == "TRUE"
+            ]
         else:
-            block = (
-                f"{i}. {checkpoint}\n"
-                f"Бажаний перетин: {target_dt}\n"
-                f"Поріг по машинах: {vehicles_text}\n"
-                f"Остання черга: {last_queue}\n"
-                f"Перевірено: {last_check}"
+            filtered = [
+                r for r in rows
+                if str(r.get("TELEGRAM", "")).strip() == str(uid)
+                and str(r.get("IS_ACTIVE", "")).upper() == "TRUE"
+            ]
+
+        print("MY_QUEUES filtered count:", len(filtered), "uid:", uid)
+
+        if not filtered:
+            await update.message.reply_text(
+                "Активних черг немає.",
+                reply_markup=main_menu_keyboard(),
             )
+            return
 
-        lines.append(block)
+        lines = []
 
-    await update.message.reply_text(
-        "\n\n".join(lines),
-        reply_markup=main_menu_keyboard(),
-    )
+        for i, r in enumerate(filtered, start=1):
+            full_name = str(r.get("FULL_NAME", "Без імені")).strip()
+            checkpoint = str(r.get("CHECKPOINT", "—")).strip()
+            target_dt = str(r.get("TARGET_DATETIME", "—")).strip()
+            target_vehicles = str(r.get("TARGET_VEHICLES", "")).strip()
+            last_queue = str(r.get("LAST_QUEUE_TEXT", "немає даних")).strip()
+            last_check = str(r.get("LAST_CHECK_AT", "ще не перевірялось")).strip()
+
+            vehicles_text = target_vehicles if target_vehicles else "не задано"
+
+            if is_admin:
+                block = (
+                    f"{i}. {full_name}\n"
+                    f"Пункт: {checkpoint}\n"
+                    f"Бажаний перетин: {target_dt}\n"
+                    f"Поріг по машинах: {vehicles_text}\n"
+                    f"Остання черга: {last_queue}\n"
+                    f"Перевірено: {last_check}"
+                )
+            else:
+                block = (
+                    f"{i}. {checkpoint}\n"
+                    f"Бажаний перетин: {target_dt}\n"
+                    f"Поріг по машинах: {vehicles_text}\n"
+                    f"Остання черга: {last_queue}\n"
+                    f"Перевірено: {last_check}"
+                )
+
+            lines.append(block)
+
+        text = "\n\n".join(lines)
+
+        await update.message.reply_text(
+            text,
+            reply_markup=main_menu_keyboard(),
+        )
+
+    except Exception as e:
+        print("MY_QUEUES ERROR:", e)
+        await update.message.reply_text(
+            f"Не вдалося отримати черги.\nПомилка: {e}",
+            reply_markup=main_menu_keyboard(),
+        )
 
 async def border_load(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
