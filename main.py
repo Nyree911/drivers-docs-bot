@@ -1450,9 +1450,23 @@ async def post_init(app: Application):
         print("[post_init] Notify admin error:", e)
 
 
+
+
 # ============================================================
 # MAIN
 # ============================================================
+
+MENU_BUTTONS_PATTERN = (
+    r"(ДОДАТИ ДОКУМЕНТ|"
+    r"МОЇ ДОКУМЕНТИ|"
+    r"ОНОВИТИ ДОКУМЕНТ|"
+    r"ВИДАЛИТИ ДОКУМЕНТ|"
+    r"ХОЧУ СТАТИ В ЧЕРГУ|"
+    r"ЗУПИНИТИ ЧЕРГУ|"
+    r"МОЇ ЧЕРГИ|"
+    r"ЗАВАНТАЖЕНІСТЬ КОРДОНІВ)"
+)
+
 
 def main():
     print("Building Application…")
@@ -1478,7 +1492,11 @@ def main():
                     MessageHandler(filters.TEXT & ~filters.COMMAND, register_save),
                 ],
             },
-            fallbacks=[CommandHandler("start", start)],
+            fallbacks=[
+                CommandHandler("start", start),
+                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+            ],
+            allow_reentry=True,
         )
     )
 
@@ -1501,7 +1519,11 @@ def main():
                     MessageHandler(filters.TEXT & ~filters.COMMAND, add_doc_date)
                 ],
             },
-            fallbacks=[CommandHandler("start", start)],
+            fallbacks=[
+                CommandHandler("start", start),
+                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+            ],
+            allow_reentry=True,
         )
     )
 
@@ -1517,7 +1539,11 @@ def main():
                     MessageHandler(filters.TEXT & ~filters.COMMAND, update_save)
                 ],
             },
-            fallbacks=[CommandHandler("start", start)],
+            fallbacks=[
+                CommandHandler("start", start),
+                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+            ],
+            allow_reentry=True,
         )
     )
 
@@ -1530,7 +1556,11 @@ def main():
             states={
                 DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
             },
-            fallbacks=[CommandHandler("start", start)],
+            fallbacks=[
+                CommandHandler("start", start),
+                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+            ],
+            allow_reentry=True,
         )
     )
 
@@ -1538,7 +1568,8 @@ def main():
     app.add_handler(
         ConversationHandler(
             entry_points=[
-                MessageHandler(filters.Regex("ХОЧУ СТАТИ В ЧЕРГУ"), queue_watch_start)            ],
+                MessageHandler(filters.Regex("ХОЧУ СТАТИ В ЧЕРГУ"), queue_watch_start)
+            ],
             states={
                 QUEUE_SELECT_CHECKPOINT: [
                     CallbackQueryHandler(
@@ -1559,7 +1590,11 @@ def main():
                     MessageHandler(filters.TEXT & ~filters.COMMAND, queue_watch_save_vehicles)
                 ],
             },
-            fallbacks=[CommandHandler("start", start)],
+            fallbacks=[
+                CommandHandler("start", start),
+                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+            ],
+            allow_reentry=True,
         )
     )
 
@@ -1576,7 +1611,6 @@ def main():
     except RuntimeError:
         loop = asyncio.get_event_loop()
         loop.run_until_complete(app.run_polling())
-
 
 if __name__ == "__main__":
     main()
