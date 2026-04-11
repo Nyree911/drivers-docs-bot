@@ -1143,7 +1143,7 @@ async def border_load(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"{short_name}\nЧерга: немає даних\n")
             continue
 
-        wait_minutes = int(found.get("wait_time") or 0)
+        wait_minutes = int((found.get("wait_time") or 0) / 60)
         queue_text = minutes_to_text(wait_minutes)
         vehicles = int(found.get("vehicle_in_active_queues_counts") or 0)
         is_paused = bool(found.get("is_paused"))
@@ -1313,7 +1313,7 @@ async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
         if title != target_title:
             continue
 
-        wait_minutes = int(item.get("wait_time") or 0)
+        wait_minutes = int((item.get("wait_time") or 0) / 60)
      
 
         days = wait_minutes // (24 * 60)
@@ -1368,7 +1368,7 @@ async def queue_watch_job(context: ContextTypes.DEFAULT_TYPE):
             if not found:
                 continue
 
-            wait_minutes = int(found.get("wait_time") or 0)
+            wait_minutes = int((found.get("wait_time") or 0) / 60)
             vehicles_count = int(found.get("vehicle_in_active_queues_counts") or 0)
             queue_text = minutes_to_text(wait_minutes)
 
