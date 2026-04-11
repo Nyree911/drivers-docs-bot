@@ -1546,7 +1546,7 @@ def main():
             },
             fallbacks=[
                 CommandHandler("start", start),
-                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+                MessageHandler(filters.Regex(r"^🔙 СКАСУВАТИ$"), cancel),
             ],
             allow_reentry=True,
         )
