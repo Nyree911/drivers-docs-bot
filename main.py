@@ -1458,14 +1458,6 @@ async def post_init(app: Application):
 
 MENU_BUTTONS_PATTERN = (
     r"(🔙 СКАСУВАТИ|"
-    r"ДОДАТИ ДОКУМЕНТ|"
-    r"МОЇ ДОКУМЕНТИ|"
-    r"ОНОВИТИ ДОКУМЕНТ|"
-    r"ВИДАЛИТИ ДОКУМЕНТ|"
-    r"ХОЧУ СТАТИ В ЧЕРГУ|"
-    r"ЗУПИНИТИ ЧЕРГУ|"
-    r"МОЇ ЧЕРГИ|"
-    r"ЗАВАНТАЖЕНІСТЬ КОРДОНІВ)"
 )
 
 
@@ -1481,7 +1473,6 @@ def main():
 
     print("App OK")
 
-    # Глушимо службові оновлення
     app.add_handler(MessageHandler(filters.StatusUpdate.ALL, lambda u, c: None))
 
     # --- Registration (/start) ---
@@ -1505,7 +1496,7 @@ def main():
     app.add_handler(
         ConversationHandler(
             entry_points=[
-                MessageHandler(filters.Regex("ДОДАТИ ДОКУМЕНТ"), add_doc_start)
+                MessageHandler(filters.TEXT & filters.Regex(r".*ДОДАТИ ДОКУМЕНТ.*"), add_doc_start)
             ],
             states={
                 ADD_SELECT_TYPE: [CallbackQueryHandler(add_doc_type)],
@@ -1532,7 +1523,7 @@ def main():
     app.add_handler(
         ConversationHandler(
             entry_points=[
-                MessageHandler(filters.Regex("ОНОВИТИ ДОКУМЕНТ"), update_start)
+                MessageHandler(filters.TEXT & filters.Regex(r".*ОНОВИТИ ДОКУМЕНТ.*"), update_start)
             ],
             states={
                 UPDATE_SELECT_DOC: [CallbackQueryHandler(update_select)],
@@ -1552,7 +1543,7 @@ def main():
     app.add_handler(
         ConversationHandler(
             entry_points=[
-                MessageHandler(filters.Regex("ВИДАЛИТИ ДОКУМЕНТ"), delete_start)
+                MessageHandler(filters.TEXT & filters.Regex(r".*ВИДАЛИТИ ДОКУМЕНТ.*"), delete_start)
             ],
             states={
                 DELETE_SELECT_DOC: [CallbackQueryHandler(delete_process)],
@@ -1569,7 +1560,7 @@ def main():
     app.add_handler(
         ConversationHandler(
             entry_points=[
-                MessageHandler(filters.Regex("ХОЧУ СТАТИ В ЧЕРГУ"), queue_watch_start)
+                MessageHandler(filters.TEXT & filters.Regex(r".*ХОЧУ СТАТИ В ЧЕРГУ.*"), queue_watch_start)
             ],
             states={
                 QUEUE_SELECT_CHECKPOINT: [
@@ -1600,10 +1591,11 @@ def main():
     )
 
     # --- Simple handlers ---
-    MessageHandler(filters.TEXT & filters.Regex(r".*МОЇ ДОКУМЕНТИ.*"), my_docs)
-    MessageHandler(filters.TEXT & filters.Regex(r".*ЗУПИНИТИ ЧЕРГУ.*"), queue_watch_stop)
-    MessageHandler(filters.TEXT & filters.Regex(r".*МОЇ ЧЕРГИ.*"), my_queues)
-    MessageHandler(filters.TEXT & filters.Regex(r".*ЗАВАНТАЖЕНІСТЬ КОРДОНІВ.*"), border_load)
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r".*МОЇ ДОКУМЕНТИ.*"), my_docs))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r".*ЗУПИНИТИ ЧЕРГУ.*"), queue_watch_stop))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r".*МОЇ ЧЕРГИ.*"), my_queues))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r".*ЗАВАНТАЖЕНІСТЬ КОРДОНІВ.*"), border_load))
+
     print("BOT RUNNING 🚀")
 
     try:
