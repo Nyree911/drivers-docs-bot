@@ -1456,10 +1456,6 @@ async def post_init(app: Application):
 # MAIN
 # ============================================================
 
-MENU_BUTTONS_PATTERN = (
-    r"(🔙 СКАСУВАТИ|"
-)
-
 
 def main():
     print("Building Application…")
@@ -1486,7 +1482,7 @@ def main():
             },
             fallbacks=[
                 CommandHandler("start", start),
-                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+                MessageHandler(filters.Regex(r"^🔙 СКАСУВАТИ$"), cancel),
             ],
             allow_reentry=True,
         )
@@ -1513,7 +1509,7 @@ def main():
             },
             fallbacks=[
                 CommandHandler("start", start),
-                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+                MessageHandler(filters.Regex(r"^🔙 СКАСУВАТИ$"), cancel),
             ],
             allow_reentry=True,
         )
@@ -1533,7 +1529,7 @@ def main():
             },
             fallbacks=[
                 CommandHandler("start", start),
-                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+                MessageHandler(filters.Regex(r"^🔙 СКАСУВАТИ$"), cancel),
             ],
             allow_reentry=True,
         )
@@ -1584,7 +1580,7 @@ def main():
             },
             fallbacks=[
                 CommandHandler("start", start),
-                MessageHandler(filters.Regex(MENU_BUTTONS_PATTERN), cancel),
+                MessageHandler(filters.Regex(r"^🔙 СКАСУВАТИ$"), cancel),
             ],
             allow_reentry=True,
         )
