@@ -1185,7 +1185,7 @@ async def border_load(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # REMINDERS
 # ============================================================
 
-REMINDER_DAYS = {30, 25, 20, 14, 7, 3, 2, 1, 0}
+REMINDER_DAYS = {30, 25, 20, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0}
 
 
 async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
