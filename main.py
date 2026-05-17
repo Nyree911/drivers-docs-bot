@@ -1210,32 +1210,35 @@ async def reminders_job(context: ContextTypes.DEFAULT_TYPE):
             continue
 
         days = (d - today).days
-        if days not in REMINDER_DAYS:
-            continue
 
-        uid = int(r["TELEGRAM"])
+        try:
+            uid = int(r["TELEGRAM"])
+        except Exception:
+            continue
 
         if days < 0:
             msg_user = f"⛔ ПРОСТРОЧЕНО: {r['DOC_NAME']} ({r['PLATE']})"
         elif days == 0:
             msg_user = f"❗ СЬОГОДНІ закінчується {r['DOC_NAME']} ({r['PLATE']})"
-        else:
+        elif days in REMINDER_DAYS:
             msg_user = (
                 f"⚠️ Через {days} днів закінчується {r['DOC_NAME']} ({r['PLATE']})"
             )
+        else:
+            continue
 
         msg_admin = f"📣 {r['FULL_NAME']} → {msg_user}"
 
         if uid != ADMIN_ID:
             try:
                 await app.bot.send_message(uid, msg_user)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Помилка відправки користувачу {uid}: {e}")
 
         try:
             await app.bot.send_message(ADMIN_ID, msg_admin)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Помилка відправки адміну: {e}")
 
 
 # ============================================================
