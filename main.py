@@ -277,11 +277,9 @@ def minutes_to_text(minutes: int) -> str:
 
     return " ".join(parts)
 
-
 def fetch_workload_data():
     headers = {
         "Accept": "application/json",
-        "Content-Type": "application/json",
         "Origin": "https://echerha.gov.ua",
         "Referer": "https://echerha.gov.ua/",
         "x-client-locale": "uk",
@@ -289,10 +287,34 @@ def fetch_workload_data():
         "User-Agent": "Mozilla/5.0",
     }
 
-    resp = requests.get(WORKLOAD_API_URL, headers=headers, timeout=20)
+    resp = requests.get(
+        "https://back.echerha.gov.ua/api/v4/workload/1",
+        headers=headers,
+        timeout=20
+    )
+
+    print("STATUS:", resp.status_code)
+    print("BODY:", resp.text)
+
     resp.raise_for_status()
-    payload = resp.json()
-    return payload.get("data", [])
+
+    return resp.json().get("data", [])
+
+#def fetch_workload_data():
+#    headers = {
+#        "Accept": "application/json",
+#        "Content-Type": "application/json",
+#       "Origin": "https://echerha.gov.ua",
+#        "Referer": "https://echerha.gov.ua/",
+#        "x-client-locale": "uk",
+#        "x-user-agent": "UABorder/3.5.0 Web/1.1.0 User/guest",
+#        "User-Agent": "Mozilla/5.0",
+#    }
+#
+#    resp = requests.get(WORKLOAD_API_URL, headers=headers, timeout=20)
+#    resp.raise_for_status()
+#    payload = resp.json()
+#    return payload.get("data", [])
 # ============================================================
 # CANCEL (для всіх сценаріїв)
 # ============================================================
