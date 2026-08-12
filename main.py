@@ -295,7 +295,7 @@ def fetch_workload_data():
         "Origin": "https://echerha.gov.ua",
         "Referer": "https://echerha.gov.ua/",
         "x-client-locale": "uk",
-        "x-user-agent": "UABorder/3.9.0 Web/1.1.0 User/guest",,
+        "x-user-agent": "UABorder/3.9.0 Web/1.1.0 User/guest",
         "User-Agent": "Mozilla/5.0",
     }
 
