@@ -78,6 +78,16 @@ sheet = client.open(SPREAD_NAME).worksheet(SHEET_NAME)
 QUEUE_SHEET_NAME = "QueueWatch"
 queue_sheet = client.open(SPREAD_NAME).worksheet(QUEUE_SHEET_NAME)
 
+ECHERHA_HEADERS = {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Origin": "https://echerha.gov.ua",
+    "Referer": "https://echerha.gov.ua/",
+    "x-client-locale": "uk",
+    "x-user-agent": "UABorder/3.9.0 Web/1.1.0 User/guest",
+    "User-Agent": "Mozilla/5.0",
+}
+
 QUEUE_REQUIRED_COLUMNS = [
     "TELEGRAM",
     "FULL_NAME",
@@ -251,7 +261,7 @@ CHECKPOINTS = {
     "YAHODYN": "Ягодин – Дорогуськ",
 }
 
-WORKLOAD_API_URL = "https://back.echerha.gov.ua/api/v4/workload/1"
+WORKLOAD_API_URL = "https://back.echerha.gov.ua/api/v5/workload/1"
 
 CHECKPOINT_TITLE_MAP = {
     "Краківець – Корчова": "Краківець – Корчова (для вантажівок ≥ 7,5 тонн)",
@@ -277,44 +287,22 @@ def minutes_to_text(minutes: int) -> str:
 
     return " ".join(parts)
 
+
 def fetch_workload_data():
     headers = {
         "Accept": "application/json",
+        "Content-Type": "application/json",
         "Origin": "https://echerha.gov.ua",
         "Referer": "https://echerha.gov.ua/",
         "x-client-locale": "uk",
-        "x-user-agent": "UABorder/3.5.0 Web/1.1.0 User/guest",
+        "x-user-agent": "UABorder/3.9.0 Web/1.1.0 User/guest",,
         "User-Agent": "Mozilla/5.0",
     }
 
-    resp = requests.get(
-        "https://back.echerha.gov.ua/api/v4/workload/1",
-        headers=headers,
-        timeout=20
-    )
-
-    print("STATUS:", resp.status_code)
-    print("BODY:", resp.text)
-
+    resp = requests.get(WORKLOAD_API_URL, headers=headers, timeout=20)
     resp.raise_for_status()
-
-    return resp.json().get("data", [])
-
-#def fetch_workload_data():
-#    headers = {
-#        "Accept": "application/json",
-#        "Content-Type": "application/json",
-#       "Origin": "https://echerha.gov.ua",
-#        "Referer": "https://echerha.gov.ua/",
-#        "x-client-locale": "uk",
-#        "x-user-agent": "UABorder/3.5.0 Web/1.1.0 User/guest",
-#        "User-Agent": "Mozilla/5.0",
-#    }
-#
-#    resp = requests.get(WORKLOAD_API_URL, headers=headers, timeout=20)
-#    resp.raise_for_status()
-#    payload = resp.json()
-#    return payload.get("data", [])
+    payload = resp.json()
+    return payload.get("data", [])
 # ============================================================
 # CANCEL (для всіх сценаріїв)
 # ============================================================
@@ -1312,7 +1300,7 @@ def get_active_queue_rows():
 
 
 async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
-    url = "https://back.echerha.gov.ua/api/v4/workload/1"
+    url = "https://back.echerha.gov.ua/api/v5/workload/1"
 
     headers = {
         "Accept": "application/json",
@@ -1320,7 +1308,7 @@ async def fetch_checkpoint_queue_text(checkpoint_name: str) -> str | None:
         "Origin": "https://echerha.gov.ua",
         "Referer": "https://echerha.gov.ua/",
         "x-client-locale": "uk",
-        "x-user-agent": "UABorder/3.5.0 Web/1.1.0 User/guest",
+        "x-user-agent": "UABorder/3.9.0 Web/1.1.0 User/guest",
         "User-Agent": "Mozilla/5.0",
     }
 
